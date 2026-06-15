@@ -21,7 +21,6 @@ struct DreamDetailView: View {
 
                 Text(dream.entry)
                     .font(.body)
-                    .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if !dream.tags.isEmpty {
@@ -30,7 +29,7 @@ struct DreamDetailView: View {
             }
             .padding(20)
         }
-        .background(backgroundGradient)
+        .background { DreamBackground() }
         .navigationTitle(dream.title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -77,20 +76,6 @@ struct DreamDetailView: View {
                 .font(.headline)
             FlowTags(tags: dream.tags, tint: dream.mood.tint)
         }
-    }
-
-    // MARK: - Background
-
-    private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.08, green: 0.09, blue: 0.18),
-                Color(red: 0.13, green: 0.10, blue: 0.24)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
     }
 }
 

@@ -20,6 +20,9 @@ struct AddDreamView: View {
     @State private var mood: Dream.Mood
     @State private var tagText: String
 
+    @State private var transcriber = DreamTranscriber()
+    @State private var entryBeforeDictation = ""
+
     init(existingDream: Dream? = nil, onSave: @escaping (DreamDraft) -> Void) {
         self.existingDream = existingDream
         self.onSave = onSave
@@ -50,6 +53,8 @@ struct AddDreamView: View {
                         axis: .vertical
                     )
                     .lineLimit(4...10)
+
+                    dictationControl
                 }
 
                 Section("Mood") {
@@ -72,13 +77,20 @@ struct AddDreamView: View {
                         #endif
                 }
             }
+            .onChange(of: transcriber.transcript) { _, newValue in
+                applyTranscript(newValue)
+            }
+            .onDisappear { transcriber.stop() }
             .navigationTitle(isEditing ? "Edit Dream" : "New Dream")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        transcriber.stop()
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
@@ -90,6 +102,7 @@ struct AddDreamView: View {
     }
 
     private func save() {
+        transcriber.stop()
         let tags = tagText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -103,6 +116,44 @@ struct AddDreamView: View {
         )
         onSave(draft)
         dismiss()
+    }
+
+    // MARK: - Dictation
+
+    private var dictationControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: toggleDictation) {
+                Label(
+                    transcriber.isRecording ? "Listening… tap to stop" : "Dictate your dream",
+                    systemImage: transcriber.isRecording ? "stop.circle.fill" : "mic.fill"
+                )
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(transcriber.isRecording ? Color.red : Color.dreamPrimary)
+            }
+            .buttonStyle(.plain)
+
+            if let error = transcriber.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func toggleDictation() {
+        if transcriber.isRecording {
+            transcriber.stop()
+        } else {
+            entryBeforeDictation = entry
+            Task { await transcriber.start() }
+        }
+    }
+
+    private func applyTranscript(_ transcript: String) {
+        guard transcriber.isRecording, !transcript.isEmpty else { return }
+        entry = entryBeforeDictation.isEmpty
+            ? transcript
+            : entryBeforeDictation + " " + transcript
     }
 }
 

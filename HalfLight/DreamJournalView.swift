@@ -1,14 +1,14 @@
 //
-//  ContentView.swift
+//  DreamJournalView.swift
 //  HalfLight
 //
-//  Created by Ryan Lewandowski on 6/13/26.
+//  The dream library: a scrollable list of recorded dreams.
 //
 
 import SwiftUI
 import SwiftData
 
-struct ContentView: View {
+struct DreamJournalView: View {
     @Query(sort: \Dream.date, order: .reverse) private var dreams: [Dream]
     @Environment(DreamStore.self) private var store
     @State private var isAddingDream = false
@@ -22,18 +22,8 @@ struct ContentView: View {
                     library
                 }
             }
-            .background(backgroundGradient)
-            .navigationTitle("Dream Library")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isAddingDream = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("Add Dream")
-                }
-            }
+            .background { DreamBackground() }
+            .navigationTitle("Dream Journal")
             .sheet(isPresented: $isAddingDream) {
                 AddDreamView { draft in
                     store.add(draft)
@@ -84,20 +74,6 @@ struct ContentView: View {
             .buttonBorderShape(.capsule)
         }
     }
-
-    // MARK: - Background
-
-    private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.08, green: 0.09, blue: 0.18),
-                Color(red: 0.13, green: 0.10, blue: 0.24)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
-    }
 }
 
 /// A single dream rendered as a card in the library.
@@ -124,7 +100,6 @@ struct DreamCard: View {
 
             Text(dream.title)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
 
             Text(dream.entry)
                 .font(.subheadline)
@@ -148,7 +123,7 @@ struct DreamCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 20))
+        .background(Color.dreamSurface, in: .rect(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
                 .stroke(dream.mood.tint.opacity(0.25), lineWidth: 1)
@@ -157,7 +132,7 @@ struct DreamCard: View {
 }
 
 #Preview {
-    ContentView()
+    DreamJournalView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
 }

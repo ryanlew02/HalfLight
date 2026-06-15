@@ -26,8 +26,10 @@ private struct RootView: View {
     var body: some View {
         Group {
             if let store {
-                ContentView()
+                MainTabView()
                     .environment(store)
+                    .tint(.dreamPrimary)
+                    .preferredColorScheme(.dark)
             } else {
                 Color.clear
             }
