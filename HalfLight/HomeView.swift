@@ -28,7 +28,7 @@ struct HomeView: View {
     private var greeting: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Welcome back")
+                Text("Welcome back!")
                     .font(.largeTitle.weight(.bold))
                 Text("Capture your dreams before they fade.")
                     .font(.subheadline)
@@ -70,7 +70,7 @@ struct HomeView: View {
                 .buttonStyle(.plain)
             }
         } else {
-            Text("No dreams yet — tap the + below to record your first.")
+            Text("No dreams yet - tap the + below to record your first.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
