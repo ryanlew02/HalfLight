@@ -21,6 +21,7 @@ struct HalfLightApp: App {
 /// Builds the `DreamStore` from the SwiftUI-owned model context and injects it.
 private struct RootView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("appTheme") private var theme: AppTheme = .system
     @State private var store: DreamStore?
 
     var body: some View {
@@ -29,7 +30,7 @@ private struct RootView: View {
                 MainTabView()
                     .environment(store)
                     .tint(.dreamPrimary)
-                    .preferredColorScheme(.dark)
+                    .preferredColorScheme(theme.colorScheme)
             } else {
                 Color.clear
             }

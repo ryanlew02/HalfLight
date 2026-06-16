@@ -20,6 +20,7 @@ struct AddDreamView: View {
     @State private var mood: Dream.Mood
     @State private var tagText: String
 
+    @AppStorage("appTheme") private var theme: AppTheme = .system
     @State private var transcriber = DreamTranscriber()
     @State private var entryBeforeDictation = ""
 
@@ -45,6 +46,7 @@ struct AddDreamView: View {
                 Section("Title") {
                     TextField("Give your dream a name", text: $title)
                 }
+                .listRowBackground(Color.dreamSurface)
 
                 Section("What happened?") {
                     TextField(
@@ -56,6 +58,7 @@ struct AddDreamView: View {
 
                     dictationControl
                 }
+                .listRowBackground(Color.dreamSurface)
 
                 Section("Mood") {
                     Picker("Mood", selection: $mood) {
@@ -68,6 +71,7 @@ struct AddDreamView: View {
                     .pickerStyle(.navigationLink)
                     #endif
                 }
+                .listRowBackground(Color.dreamSurface)
 
                 Section("Tags") {
                     TextField("Comma-separated, e.g. ocean, flight", text: $tagText)
@@ -76,7 +80,10 @@ struct AddDreamView: View {
                         .textInputAutocapitalization(.never)
                         #endif
                 }
+                .listRowBackground(Color.dreamSurface)
             }
+            .scrollContentBackground(.hidden)
+            .background { DreamBackground() }
             .onChange(of: transcriber.transcript) { _, newValue in
                 applyTranscript(newValue)
             }
@@ -87,10 +94,13 @@ struct AddDreamView: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button {
                         transcriber.stop()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
                     }
+                    .accessibilityLabel("Close")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
@@ -99,6 +109,8 @@ struct AddDreamView: View {
                 }
             }
         }
+        .tint(.dreamPrimary)
+        .preferredColorScheme(theme.colorScheme)
     }
 
     private func save() {

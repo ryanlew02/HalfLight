@@ -39,7 +39,7 @@ struct DreamDetailView: View {
                 Button("Edit") { isEditing = true }
             }
         }
-        .sheet(isPresented: $isEditing) {
+        .fullScreenCover(isPresented: $isEditing) {
             AddDreamView(existingDream: dream) { draft in
                 store.update(dream, with: draft)
             }

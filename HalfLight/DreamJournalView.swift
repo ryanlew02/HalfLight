@@ -24,7 +24,7 @@ struct DreamJournalView: View {
             }
             .background { DreamBackground() }
             .navigationTitle("Dream Journal")
-            .sheet(isPresented: $isAddingDream) {
+            .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
                     store.add(draft)
                 }

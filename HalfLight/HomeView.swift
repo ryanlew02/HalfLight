@@ -26,12 +26,25 @@ struct HomeView: View {
     }
 
     private var greeting: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Welcome back")
-                .font(.largeTitle.weight(.bold))
-            Text("Capture your dreams before they fade.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Welcome back")
+                    .font(.largeTitle.weight(.bold))
+                Text("Capture your dreams before they fade.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            NavigationLink {
+                SettingsView()
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.dreamPrimary)
+            }
+            .accessibilityLabel("Settings")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

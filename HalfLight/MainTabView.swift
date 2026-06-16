@@ -22,7 +22,7 @@ struct MainTabView: View {
                     isAddingDream = true
                 }
             }
-            .sheet(isPresented: $isAddingDream) {
+            .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
                     store.add(draft)
                 }
