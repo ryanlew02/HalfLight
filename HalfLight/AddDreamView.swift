@@ -173,6 +173,16 @@ struct AddDreamView: View {
     AddDreamView { _ in }
 }
 
+#Preview("New — Dark") {
+    AddDreamView { _ in }
+        .preferredColorScheme(.dark)
+}
+
 #Preview("Edit") {
     AddDreamView(existingDream: Dream.preview) { _ in }
+}
+
+#Preview("Edit — Dark") {
+    AddDreamView(existingDream: Dream.preview) { _ in }
+        .preferredColorScheme(.dark)
 }

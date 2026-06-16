@@ -11,6 +11,9 @@ import SwiftData
 struct StatsView: View {
     @Query private var dreams: [Dream]
 
+    /// The calendar year shown in the activity grid; defaults to this year.
+    @State private var selectedYear = Calendar.current.component(.year, from: .now)
+
     var body: some View {
         NavigationStack {
             Group {
@@ -23,6 +26,7 @@ struct StatsView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 28) {
+                            activitySection
                             moodSection
                             tagSection
                         }
@@ -33,6 +37,92 @@ struct StatsView: View {
             .background { DreamBackground() }
             .navigationTitle("Stats")
         }
+    }
+
+    // MARK: - Activity (past year)
+
+    /// Side length of each day square, in points.
+    private let squareSize: CGFloat = 11
+    private let squareSpacing: CGFloat = 3
+
+    private var activitySection: some View {
+        let weeks = weeks(for: selectedYear)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                yearArrow(systemName: "chevron.left", enabled: selectedYear > earliestYear) {
+                    selectedYear -= 1
+                }
+
+                Text(String(selectedYear))
+                    .font(.headline)
+                    .monospacedDigit()
+
+                yearArrow(systemName: "chevron.right", enabled: selectedYear < currentYear) {
+                    selectedYear += 1
+                }
+
+                Spacer()
+
+                Text("\(daysJournaledCount(for: selectedYear)) days journaled")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: squareSpacing) {
+                        ForEach(Array(weeks.enumerated()), id: \.offset) { index, week in
+                            VStack(spacing: squareSpacing) {
+                                ForEach(Array(week.enumerated()), id: \.offset) { _, day in
+                                    daySquare(for: day)
+                                }
+                            }
+                            .id(index)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .onAppear { scrollToEdge(proxy, weekCount: weeks.count) }
+                .onChange(of: selectedYear) { _, _ in scrollToEdge(proxy, weekCount: weeks.count) }
+            }
+        }
+    }
+
+    /// A year-paging chevron. When it can't be used it's dimmed darker so the
+    /// available direction reads as the brighter, tappable one.
+    private func yearArrow(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.headline)
+                .foregroundStyle(enabled ? Color.dreamPrimary : Color.dreamText.opacity(0.25))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    /// Jump to the most recent week for the current year, or the start of the
+    /// year for past years.
+    private func scrollToEdge(_ proxy: ScrollViewProxy, weekCount: Int) {
+        if selectedYear == currentYear {
+            proxy.scrollTo(weekCount - 1, anchor: .trailing)
+        } else {
+            proxy.scrollTo(0, anchor: .leading)
+        }
+    }
+
+    private func daySquare(for day: Date?) -> some View {
+        let isJournaled = day.map { journaledDays.contains($0) } ?? false
+        return RoundedRectangle(cornerRadius: 2)
+            .fill(isJournaled ? Color.dreamPrimary : Color.clear)
+            .frame(width: squareSize, height: squareSize)
+            .overlay {
+                // Empty real days get a faint outline so the grid stays legible;
+                // padding cells (nil) stay fully blank.
+                if let day, !journaledDays.contains(day) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(Color.dreamText.opacity(0.12), lineWidth: 1)
+                }
+            }
     }
 
     // MARK: - Moods
@@ -88,6 +178,62 @@ struct StatsView: View {
 
     // MARK: - Computed data
 
+    /// Calendar days that count as journaled: a dream was recorded, or the user
+    /// tapped "I'm not sure" on the home prompt. Normalized to start-of-day.
+    private var journaledDays: Set<Date> {
+        let calendar = Calendar.current
+        let dreamDays = dreams.map { calendar.startOfDay(for: $0.date) }
+        return Set(dreamDays).union(SkippedDayStore.days())
+    }
+
+    private var currentYear: Int {
+        Calendar.current.component(.year, from: .now)
+    }
+
+    /// How far back the user can page: always at least 2024, or earlier if there
+    /// happens to be journaled data before then.
+    private var earliestYear: Int {
+        let earliestData = journaledDays
+            .map { Calendar.current.component(.year, from: $0) }
+            .min() ?? currentYear
+        return min(2024, earliestData)
+    }
+
+    private func daysJournaledCount(for year: Int) -> Int {
+        let calendar = Calendar.current
+        return journaledDays.filter { calendar.component(.year, from: $0) == year }.count
+    }
+
+    /// A calendar year laid out as week columns of 7 days each. Leading/trailing
+    /// slots that fall outside the year are `nil` so rows stay aligned by weekday.
+    /// The current year stops at today rather than running to Dec 31.
+    private func weeks(for year: Int) -> [[Date?]] {
+        let calendar = Calendar.current
+        guard let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+              let yearEnd = calendar.date(from: DateComponents(year: year, month: 12, day: 31))
+        else { return [] }
+
+        let today = calendar.startOfDay(for: .now)
+        let end = min(yearEnd, today)
+
+        // Back up to the start of the week so rows align by weekday.
+        let leadingBlanks = calendar.component(.weekday, from: start) - calendar.firstWeekday
+        let normalizedBlanks = (leadingBlanks + 7) % 7
+
+        var days: [Date?] = Array(repeating: nil, count: normalizedBlanks)
+        var day = start
+        while day <= end {
+            days.append(day)
+            day = calendar.date(byAdding: .day, value: 1, to: day) ?? end.addingTimeInterval(1)
+        }
+        // Pad the final week so the last column also has 7 rows.
+        while days.count % 7 != 0 {
+            days.append(nil)
+        }
+
+        return stride(from: 0, to: days.count, by: 7).map { Array(days[$0..<$0 + 7]) }
+    }
+
     private var moodCounts: [(mood: Dream.Mood, count: Int)] {
         Dream.Mood.allCases.map { mood in
             (mood, dreams.filter { $0.mood == mood }.count)
@@ -111,8 +257,15 @@ struct StatsView: View {
     }
 }
 
-#Preview {
+#Preview("Light") {
     StatsView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+}
+
+#Preview("Dark") {
+    StatsView()
+        .modelContainer(PreviewData.container)
+        .environment(PreviewData.store)
+        .preferredColorScheme(.dark)
 }

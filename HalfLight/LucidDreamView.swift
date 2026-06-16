@@ -73,6 +73,11 @@ struct LucidDreamView: View {
     }
 }
 
-#Preview {
+#Preview("Light") {
     LucidDreamView()
+}
+
+#Preview("Dark") {
+    LucidDreamView()
+        .preferredColorScheme(.dark)
 }

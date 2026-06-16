@@ -105,10 +105,19 @@ private struct FlowTags: View {
     }
 }
 
-#Preview {
+#Preview("Light") {
     NavigationStack {
         DreamDetailView(dream: Dream.preview)
     }
     .modelContainer(PreviewData.container)
     .environment(PreviewData.store)
+}
+
+#Preview("Dark") {
+    NavigationStack {
+        DreamDetailView(dream: Dream.preview)
+    }
+    .modelContainer(PreviewData.container)
+    .environment(PreviewData.store)
+    .preferredColorScheme(.dark)
 }

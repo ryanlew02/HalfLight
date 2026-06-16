@@ -131,8 +131,15 @@ struct DreamCard: View {
     }
 }
 
-#Preview {
+#Preview("Light") {
     DreamJournalView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+}
+
+#Preview("Dark") {
+    DreamJournalView()
+        .modelContainer(PreviewData.container)
+        .environment(PreviewData.store)
+        .preferredColorScheme(.dark)
 }

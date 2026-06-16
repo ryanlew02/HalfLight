@@ -40,8 +40,15 @@ struct MainTabView: View {
     }
 }
 
-#Preview {
+#Preview("Light") {
     MainTabView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+}
+
+#Preview("Dark") {
+    MainTabView()
+        .modelContainer(PreviewData.container)
+        .environment(PreviewData.store)
+        .preferredColorScheme(.dark)
 }

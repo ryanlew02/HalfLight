@@ -181,8 +181,15 @@ struct AboutSettingsView: View {
     }
 }
 
-#Preview {
+#Preview("Light") {
     NavigationStack {
         SettingsView()
     }
+}
+
+#Preview("Dark") {
+    NavigationStack {
+        SettingsView()
+    }
+    .preferredColorScheme(.dark)
 }
