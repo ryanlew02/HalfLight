@@ -21,7 +21,7 @@ enum AppTab: CaseIterable, Identifiable {
         case .home: "Home"
         case .journal: "Journal"
         case .lucid: "Lucid"
-        case .stats: "Stats"
+        case .stats: "Profile"
         }
     }
 
@@ -30,7 +30,7 @@ enum AppTab: CaseIterable, Identifiable {
         case .home: "house.fill"
         case .journal: "book.fill"
         case .lucid: "moon.stars.fill"
-        case .stats: "chart.bar.fill"
+        case .stats: "person.crop.circle.fill"
         }
     }
 }

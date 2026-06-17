@@ -23,12 +23,14 @@ private struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @State private var store: DreamStore?
+    @State private var auth = AuthService()
 
     var body: some View {
         Group {
             if let store {
                 MainTabView()
                     .environment(store)
+                    .environment(auth)
                     .tint(.dreamPrimary)
                     .preferredColorScheme(theme.colorScheme)
             } else {
@@ -40,6 +42,9 @@ private struct RootView: View {
             let store = DreamStore(context: modelContext)
             store.seedSampleDataIfNeeded()
             self.store = store
+        }
+        .task {
+            await auth.restore()
         }
     }
 }

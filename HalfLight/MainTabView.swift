@@ -13,15 +13,23 @@ struct MainTabView: View {
     @Environment(DreamStore.self) private var store
     @State private var selection: AppTab = .home
     @State private var isAddingDream = false
+    @State private var tabBarHeight: CGFloat = 0
 
     var body: some View {
-        currentScreen
+        ZStack {
+            currentScreen
+                .id(selection)
+                .transition(.opacity)
+        }
             .foregroundStyle(Color.dreamText)
+            .environment(\.tabBarHeight, tabBarHeight)
             .safeAreaInset(edge: .bottom) {
                 CustomTabBar(selection: $selection) {
                     isAddingDream = true
                 }
+                .measuresTabBarHeight()
             }
+            .onPreferenceChange(TabBarHeightPreferenceKey.self) { tabBarHeight = $0 }
             .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
                     store.add(draft)
@@ -44,11 +52,13 @@ struct MainTabView: View {
     MainTabView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AuthService())
 }
 
 #Preview("Dark") {
     MainTabView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }

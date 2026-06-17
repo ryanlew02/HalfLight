@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct StatsView: View {
+    @AppStorage("userName") private var userName = "Dreamer"
     @Query private var dreams: [Dream]
 
     /// The calendar year shown in the activity grid; defaults to this year.
@@ -16,27 +17,94 @@ struct StatsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if dreams.isEmpty {
-                    ContentUnavailableView(
-                        "No Stats Yet",
-                        systemImage: "chart.bar",
-                        description: Text("Record a few dreams to see patterns here.")
-                    )
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 28) {
-                            activitySection
-                            moodSection
-                            tagSection
-                        }
-                        .padding(20)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    header
+                    progressSection
+                    if dreams.isEmpty {
+                        emptyHint
+                    } else {
+                        activitySection
+                        moodSection
+                        tagSection
                     }
                 }
+                .padding(20)
             }
             .background { DreamBackground() }
-            .navigationTitle("Stats")
+            .toolbar(.hidden, for: .navigationBar)
         }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            Text(userName)
+                .font(.dreamDisplay(28))
+            Spacer()
+            NavigationLink {
+                SettingsView()
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.dreamPrimary)
+            }
+            .accessibilityLabel("Settings")
+        }
+    }
+
+    // MARK: - Progress (XP & level)
+
+    /// The lucid count is a placeholder until lucid progress is persisted.
+    @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
+    private var totalXP: Int {
+        DreamProgression.totalXP(journalEntries: dreams.count, lucidSections: lucidSectionsCompleted)
+    }
+    private var level: Int { DreamProgression.level(forXP: totalXP) }
+    private var xpIntoLevel: Int { DreamProgression.xpIntoLevel(forXP: totalXP) }
+    private var levelProgress: Double { DreamProgression.progress(forXP: totalXP) }
+    private var rank: DreamProgression.Rank { DreamProgression.rank(forLevel: level) }
+
+    private var progressSection: some View {
+        NavigationLink {
+            LevelsView(totalXP: totalXP)
+        } label: {
+            VStack(alignment: .leading, spacing: DreamMetric.md) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(rank.name)
+                            .font(.dreamDisplay(18, .bold))
+                        Text("Level \(level)")
+                            .font(.dreamBody(12, .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("\(totalXP) XP")
+                        .font(.dreamBody(13, .semibold))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.dreamText.opacity(0.4))
+                }
+
+                SegmentedProgressBar(progress: levelProgress)
+                    .frame(height: 16)
+
+                Text("\(xpIntoLevel) / \(DreamProgression.xpPerLevel) XP to Level \(level + 1)")
+                    .font(.dreamBody(12))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DreamMetric.lg)
+            .dreamCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var emptyHint: some View {
+        Text("Record a few dreams to unlock your activity, moods, and themes.")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Activity (past year)
@@ -254,6 +322,45 @@ struct StatsView: View {
         guard maxCount > 0, count > 0 else { return 0 }
         let fraction = CGFloat(count) / CGFloat(maxCount)
         return max(8, fullWidth * fraction)
+    }
+}
+
+/// A level-style progress bar split into equal segments by notches, e.g.
+/// `---|---|----|`. The gradient fill shows progress across the whole bar.
+private struct SegmentedProgressBar: View {
+    /// 0...1 fill fraction.
+    let progress: Double
+    var segments: Int = 5
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.dreamText.opacity(0.1))
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.dreamPrimary, .dreamAccent],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(0, min(1, progress)) * geo.size.width)
+
+                // Notches between segments (cut in the track's base color).
+                HStack(spacing: 0) {
+                    ForEach(0..<(segments - 1), id: \.self) { _ in
+                        Spacer(minLength: 0)
+                        Rectangle()
+                            .fill(Color.dreamSurface)
+                            .frame(width: 2)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .clipShape(.capsule)
+        }
     }
 }
 

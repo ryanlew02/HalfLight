@@ -11,16 +11,27 @@ struct CustomTabBar: View {
     @Binding var selection: AppTab
     let onAdd: () -> Void
 
+    /// Incremented on each "+" tap to drive the add animation.
+    @State private var addTaps = 0
+
+    /// Animatable state for the expanding ripple ring behind the "+".
+    private struct Ripple {
+        var scale: CGFloat = 1
+        var opacity: Double = 0
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
+        HStack(alignment: .bottom, spacing: 0) {
             tabButton(.home)
-            tabButton(.journal)
-            addButton
             tabButton(.lucid)
+            addButton
+            tabButton(.journal)
             tabButton(.stats)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 10)
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
         .background(
             Rectangle()
                 .fill(Color.dreamBase)
@@ -35,40 +46,83 @@ struct CustomTabBar: View {
 
     private func tabButton(_ tab: AppTab) -> some View {
         Button {
-            selection = tab
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 20))
-                Text(tab.title)
-                    .font(.caption2)
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                selection = tab
             }
-            .foregroundStyle(selection == tab ? Color.dreamPrimary : .secondary)
-            .frame(maxWidth: .infinity)
+        } label: {
+            Image(systemName: tab.icon)
+                .font(.system(size: 22))
+                .foregroundStyle(selection == tab ? Color.dreamPrimary : .secondary)
+                .scaleEffect(selection == tab ? 1.1 : 1.0)
+                .symbolEffect(.bounce, value: selection == tab)
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)
     }
 
     private var addButton: some View {
-        Button(action: onAdd) {
-            Image(systemName: "plus")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 58, height: 58)
-                .background(
-                    LinearGradient(
-                        colors: [.dreamPrimary, .dreamAccent],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: .circle
-                )
-                .shadow(color: Color.dreamPrimary.opacity(0.5), radius: 8, y: 4)
+        Button {
+            // Play the tap animation, then open the sheet so it's visible first.
+            addTaps += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                onAdd()
+            }
+        } label: {
+            ZStack {
+                // Soft glow that swells out of the button and fades — anchored
+                // to the "+", so it reads as light radiating rather than a
+                // detached ring.
+                Circle()
+                    .fill(Color.dreamPrimary)
+                    .frame(width: 60, height: 60)
+                    .blur(radius: 8)
+                    .keyframeAnimator(initialValue: Ripple(), trigger: addTaps) { content, value in
+                        content
+                            .scaleEffect(value.scale)
+                            .opacity(value.opacity)
+                    } keyframes: { _ in
+                        KeyframeTrack(\.scale) {
+                            CubicKeyframe(1.0, duration: 0.01)
+                            CubicKeyframe(1.7, duration: 0.5)
+                        }
+                        KeyframeTrack(\.opacity) {
+                            CubicKeyframe(0.5, duration: 0.01)
+                            CubicKeyframe(0.0, duration: 0.5)
+                        }
+                    }
+
+                Image(systemName: "plus")
+                    .font(.system(size: 27, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 60, height: 60)
+                    .background(
+                        LinearGradient(
+                            colors: [.dreamPrimary, .dreamAccent],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: .circle
+                    )
+                    .shadow(color: Color.dreamPrimary.opacity(0.5), radius: 8, y: 4)
+                    // Springy pop on tap.
+                    .keyframeAnimator(initialValue: 1.0, trigger: addTaps) { content, scale in
+                        content.scaleEffect(scale)
+                    } keyframes: { _ in
+                        KeyframeTrack {
+                            SpringKeyframe(1.25, duration: 0.18, spring: .bouncy)
+                            SpringKeyframe(1.0, duration: 0.25, spring: .bouncy)
+                        }
+                    }
+            }
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .offset(y: -14)
+        // Constrain the layout height so the larger circle overflows upward
+        // instead of inflating the whole bar.
+        .frame(height: 38)
+        .offset(y: 2)
         .accessibilityLabel("Add Dream")
+        .sensoryFeedback(trigger: addTaps) { _, _ in .impact(flexibility: .soft) }
     }
 }

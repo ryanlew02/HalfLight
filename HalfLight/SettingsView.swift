@@ -8,11 +8,22 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(AuthService.self) private var auth
+    @AppStorage("userName") private var userName = "Dreamer"
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("dailyReminderEnabled") private var dailyReminder = false
 
     var body: some View {
         Form {
+            Section {
+                NavigationLink {
+                    NameSettingsView()
+                } label: {
+                    SettingRow(title: "Name", systemImage: "person.text.rectangle", value: userName)
+                }
+            }
+            .listRowBackground(Color.dreamSurface)
+
             Section {
                 NavigationLink {
                     AppearanceSettingsView()
@@ -31,7 +42,7 @@ struct SettingsView: View {
                 NavigationLink {
                     AccountSettingsView()
                 } label: {
-                    SettingRow(title: "Account", systemImage: "person.crop.circle", value: "Sign in")
+                    SettingRow(title: "Account", systemImage: "person.crop.circle", value: auth.isSignedIn ? (auth.email ?? "Signed in") : "Sign in")
                 }
                 NavigationLink {
                     AboutSettingsView()
@@ -66,6 +77,38 @@ private struct SettingRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - Name
+
+struct NameSettingsView: View {
+    @AppStorage("userName") private var userName = "Dreamer"
+    @State private var draft = ""
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Your name", text: $draft)
+                    .textContentType(.givenName)
+                    .submitLabel(.done)
+            } footer: {
+                Text("This is how HalfLight greets you on the Home screen.")
+            }
+            .listRowBackground(Color.dreamSurface)
+        }
+        .scrollContentBackground(.hidden)
+        .background { DreamBackground() }
+        .tint(.dreamPrimary)
+        .navigationTitle("Name")
+        .onAppear { draft = userName }
+        .onChange(of: draft) { _, newValue in
+            let trimmed = newValue.trimmingCharacters(in: .whitespaces)
+            userName = trimmed.isEmpty ? "Dreamer" : trimmed
+        }
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }
 
@@ -136,19 +179,167 @@ struct NotificationSettingsView: View {
 // MARK: - Account
 
 struct AccountSettingsView: View {
+    @Environment(AuthService.self) private var auth
+    @State private var showAuth = false
+
+    var body: some View {
+        Form {
+            if auth.isSignedIn {
+                Section {
+                    LabeledContent("Email", value: auth.email ?? "—")
+                } header: {
+                    Text("Signed in")
+                } footer: {
+                    Text("Your dreams are backed up and synced to this account.")
+                }
+                .listRowBackground(Color.dreamSurface)
+
+                if auth.canChangePassword {
+                    Section {
+                        NavigationLink {
+                            ChangePasswordView()
+                        } label: {
+                            SettingRow(title: "Change password", systemImage: "key", value: nil)
+                        }
+                    }
+                    .listRowBackground(Color.dreamSurface)
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        Task { await auth.signOut() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if auth.isWorking {
+                                ProgressView()
+                            } else {
+                                Text("Sign out")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(auth.isWorking)
+                }
+                .listRowBackground(Color.dreamSurface)
+            } else {
+                Section {
+                    Button {
+                        showAuth = true
+                    } label: {
+                        Label("Sign in or create account", systemImage: "person.crop.circle.badge.plus")
+                    }
+                } footer: {
+                    Text("Sign in to back up your dreams and sync them across devices.")
+                }
+                .listRowBackground(Color.dreamSurface)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background { DreamBackground() }
+        .tint(.dreamPrimary)
+        .navigationTitle("Account")
+        .sheet(isPresented: $showAuth) {
+            AuthView()
+        }
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+}
+
+// MARK: - Change password
+
+struct ChangePasswordView: View {
+    @Environment(AuthService.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var current = ""
+    @State private var newPassword = ""
+    @State private var confirm = ""
+
+    private var passwordsMatch: Bool { newPassword == confirm }
+
+    private var canSubmit: Bool {
+        !current.isEmpty && newPassword.count >= 6 && passwordsMatch && !auth.isWorking
+    }
+
     var body: some View {
         Form {
             Section {
-                Label("Sign in to sync", systemImage: "person.crop.circle")
+                SecureField("Current password", text: $current)
+                    .textContentType(.password)
+            }
+            .listRowBackground(Color.dreamSurface)
+
+            Section {
+                SecureField("New password", text: $newPassword)
+                    .textContentType(.newPassword)
+                SecureField("Confirm new password", text: $confirm)
+                    .textContentType(.newPassword)
             } footer: {
-                Text("Accounts and cloud sync are coming soon. Your dreams are stored on this device for now.")
+                if !confirm.isEmpty && !passwordsMatch {
+                    Text("Passwords don't match.")
+                        .foregroundStyle(.red)
+                } else {
+                    Text("Use at least 6 characters.")
+                }
+            }
+            .listRowBackground(Color.dreamSurface)
+
+            if let error = auth.errorMessage {
+                Section {
+                    Text(error).foregroundStyle(.red)
+                }
+                .listRowBackground(Color.dreamSurface)
+            }
+
+            if let info = auth.infoMessage {
+                Section {
+                    Label(info, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(Color.dreamPrimary)
+                }
+                .listRowBackground(Color.dreamSurface)
+            }
+
+            Section {
+                Button {
+                    Task {
+                        let ok = await auth.changePassword(current: current, new: newPassword)
+                        if ok {
+                            current = ""; newPassword = ""; confirm = ""
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Spacer()
+                        if auth.isWorking {
+                            ProgressView()
+                        } else {
+                            Text("Update password").fontWeight(.semibold)
+                        }
+                        Spacer()
+                    }
+                }
+                .disabled(!canSubmit)
+            } footer: {
+                Button("Forgot password?") {
+                    Task { await auth.sendPasswordReset(email: auth.email ?? "") }
+                }
+                .font(.dreamBody(13, .semibold))
+                .foregroundStyle(Color.dreamPrimary)
+                .disabled(auth.isWorking)
             }
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
         .background { DreamBackground() }
         .tint(.dreamPrimary)
-        .navigationTitle("Account")
+        .navigationTitle("Change Password")
+        .onAppear {
+            auth.errorMessage = nil
+            auth.infoMessage = nil
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -185,11 +376,13 @@ struct AboutSettingsView: View {
     NavigationStack {
         SettingsView()
     }
+    .environment(AuthService())
 }
 
 #Preview("Dark") {
     NavigationStack {
         SettingsView()
     }
+    .environment(AuthService())
     .preferredColorScheme(.dark)
 }

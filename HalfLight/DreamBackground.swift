@@ -12,14 +12,11 @@ import UIKit
 import AppKit
 #endif
 
+/// Shared app backdrop. Renders the atmospheric night sky so every screen
+/// shares one cohesive background.
 struct DreamBackground: View {
     var body: some View {
-        LinearGradient(
-            colors: [.dreamBase, .dreamSurface],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
+        NightSkyBackground()
     }
 }
 

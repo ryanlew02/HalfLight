@@ -2,7 +2,9 @@
 //  HomeView.swift
 //  HalfLight
 //
-//  Landing dashboard: a quick summary and the most recent dream.
+//  Landing dashboard. The latest dream is the emotional focal point (a hero
+//  card lit by its mood color); the today-prompt nudges logging, and the stat
+//  tiles are deliberately demoted beneath it.
 //
 
 import SwiftUI
@@ -10,32 +12,52 @@ import SwiftData
 
 struct HomeView: View {
     @Environment(DreamStore.self) private var store
+    @Environment(AuthService.self) private var auth
     @Query(sort: \Dream.date, order: .reverse) private var dreams: [Dream]
 
     /// The day (start-of-day, as a time interval) the user last tapped "I'm not sure".
     /// Used to keep the prompt dismissed for the rest of that day.
+    @AppStorage("userName") private var userName = "Dreamer"
     @AppStorage("dreamPromptSkippedDay") private var skippedDay: Double = 0
     @State private var isAddingDream = false
     /// Drives the brief "come back tomorrow" confirmation shown right after the
     /// user taps "I'm not sure". Auto-hides after a couple of seconds.
     @State private var showSkippedMessage = false
+    /// The dream picked by "Revisit a random dream"; setting it pushes the detail view.
+    @State private var randomDream: Dream?
+    /// Presents the account sheet from the "Create an account" tip.
+    @State private var showAuth = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: DreamMetric.xxl) {
                     greeting
                     if showTodayPrompt {
                         todayPrompt
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     } else if showSkippedMessage {
                         skippedMessage
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                    latestSection
+                    if dreams.count >= 2 {
+                        randomDreamButton
                     }
                     summary
-                    latest
+                    tipsSection
                 }
-                .padding(20)
+                .padding(.horizontal, DreamMetric.screen)
+                .padding(.top, DreamMetric.sm)
+                .padding(.bottom, DreamMetric.xl)
             }
-            .background { DreamBackground() }
+            .background { NightSkyBackground() }
+            .navigationDestination(item: $randomDream) { dream in
+                DreamDetailView(dream: dream)
+            }
+            .sheet(isPresented: $showAuth) {
+                AuthView()
+            }
             .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
                     store.add(draft)
@@ -44,26 +66,24 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Greeting
+
+    private var greetingText: String {
+        switch Calendar.current.component(.hour, from: .now) {
+        case 5..<12: "Good morning"
+        case 12..<17: "Good afternoon"
+        case 17..<22: "Good evening"
+        default: "Good night"
+        }
+    }
+
     private var greeting: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Welcome back!")
-                    .font(.largeTitle.weight(.bold))
-                Text("Capture your dreams before they fade.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            NavigationLink {
-                SettingsView()
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.title2)
-                    .foregroundStyle(Color.dreamPrimary)
-            }
-            .accessibilityLabel("Settings")
+        VStack(alignment: .leading, spacing: DreamMetric.xs) {
+            Text("\(greetingText), \(userName)")
+                .font(.dreamDisplay(24))
+            Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
+                .font(.dreamBody(15, .medium))
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -86,32 +106,25 @@ struct HomeView: View {
     }
 
     private var todayPrompt: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: DreamMetric.md) {
+            HStack(spacing: DreamMetric.sm) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(Color.dreamPrimary)
                 Text("Did you dream last night?")
-                    .font(.headline)
+                    .font(.dreamDisplay(18, .bold))
             }
 
             Text("Capture it now before the details slip away.")
-                .font(.subheadline)
+                .font(.dreamBody(15))
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
-                Button {
+            HStack(spacing: DreamMetric.md) {
+                Button("Record a dream") {
                     isAddingDream = true
-                } label: {
-                    Text("Record a dream")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.dreamPrimary, in: .rect(cornerRadius: 12))
-                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PrimaryButtonStyle())
 
-                Button {
+                Button("I'm not sure") {
                     skippedDay = Calendar.current.startOfDay(for: .now).timeIntervalSince1970
                     SkippedDayStore.record(.now)
                     withAnimation { showSkippedMessage = true }
@@ -119,73 +132,105 @@ struct HomeView: View {
                         try? await Task.sleep(for: .seconds(2))
                         withAnimation { showSkippedMessage = false }
                     }
-                } label: {
-                    Text("I'm not sure")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.dreamSurface, in: .rect(cornerRadius: 12))
-                        .foregroundStyle(Color.dreamText)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.dreamText.opacity(0.12), lineWidth: 1)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GhostButtonStyle())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.dreamPrimary.opacity(0.25), lineWidth: 1)
-        )
+        .padding(DreamMetric.lg)
+        .dreamCard()
     }
 
     private var skippedMessage: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: DreamMetric.md) {
             Image(systemName: "moon.zzz.fill")
                 .foregroundStyle(Color.dreamPrimary)
             Text("It's ok — come back tomorrow!")
-                .font(.subheadline.weight(.medium))
+                .font(.dreamDisplay(15, .bold))
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.dreamPrimary.opacity(0.25), lineWidth: 1)
-        )
+        .padding(DreamMetric.lg)
+        .dreamCard()
     }
 
-    private var summary: some View {
-        HStack(spacing: 12) {
-            SummaryCard(value: "\(dreams.count)", label: "Total dreams", icon: "book.fill")
-            SummaryCard(value: "\(weekCount)", label: "This week", icon: "calendar")
-        }
-    }
+    // MARK: - Latest dream (hero) + empty state
 
     @ViewBuilder
-    private var latest: some View {
+    private var latestSection: some View {
         if let latest = dreams.first {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: DreamMetric.md) {
                 Text("Latest dream")
-                    .font(.headline)
+                    .font(.dreamDisplay(20, .bold))
                 NavigationLink {
                     DreamDetailView(dream: latest)
                 } label: {
-                    DreamCard(dream: latest)
+                    HeroDreamCard(dream: latest)
                 }
                 .buttonStyle(.plain)
             }
         } else {
-            Text("No dreams yet - tap the + below to record your first.")
-                .font(.subheadline)
+            emptyState
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: DreamMetric.md) {
+            Image(systemName: "moon.stars")
+                .font(.system(size: 44, weight: .regular))
+                .foregroundStyle(Color.dreamPrimary.opacity(0.7))
+            Text("No dreams yet")
+                .font(.dreamDisplay(20, .bold))
+            Text("Tap the + below to record your first — before it fades.")
+                .font(.dreamBody(15))
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 8)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, DreamMetric.xxl)
+    }
+
+    // MARK: - Rediscover a random dream
+
+    private var randomDreamButton: some View {
+        Button {
+            // Reselect each tap; never the dream already shown as the hero.
+            randomDream = dreams.dropFirst().randomElement() ?? dreams.first
+        } label: {
+            HStack(spacing: DreamMetric.md) {
+                Image(systemName: "shuffle")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.dreamPrimary)
+                    .frame(width: 44, height: 44)
+                    .background(Color.dreamPrimary.opacity(0.12), in: .circle)
+
+                VStack(alignment: .leading, spacing: DreamMetric.xs) {
+                    Text("Revisit a random dream")
+                        .font(.dreamDisplay(16, .bold))
+                    Text("Rediscover a memory from your journal")
+                        .font(.dreamBody(13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.dreamText.opacity(0.4))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DreamMetric.lg)
+            .dreamCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Stats (demoted)
+
+    private var summary: some View {
+        HStack(spacing: DreamMetric.md) {
+            SummaryCard(value: "\(dreams.count)", label: "Total dreams", icon: "book.fill")
+            SummaryCard(value: "\(weekCount)", label: "This week", icon: "calendar")
         }
     }
 
@@ -193,31 +238,170 @@ struct HomeView: View {
         let weekAgo = Date.now.addingTimeInterval(-7 * 24 * 60 * 60)
         return dreams.filter { $0.date >= weekAgo }.count
     }
+
+    // MARK: - Tips
+
+    /// Outstanding tips: the account tip resolves once signed in; the widget tip
+    /// is always available for now.
+    private var tipsRemaining: Int { (auth.isSignedIn ? 0 : 1) + 1 }
+
+    private var tipsSection: some View {
+        VStack(alignment: .leading, spacing: DreamMetric.md) {
+            HStack(spacing: DreamMetric.sm) {
+                Text("Tips")
+                    .font(.dreamDisplay(20, .bold))
+                Text("\(tipsRemaining)")
+                    .font(.dreamDisplay(13, .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(Color.dreamPrimary, in: .circle)
+            }
+
+            if !auth.isSignedIn {
+                TipCard(
+                    icon: "icloud.fill",
+                    title: "Create an account",
+                    detail: "Back up your dreams to the cloud so they're saved and synced — you'll never lose a memory.",
+                    action: { showAuth = true }
+                )
+            }
+
+            TipCard(
+                icon: "lock.fill",
+                title: "Add a Lock Screen widget",
+                detail: "Put HalfLight on your Lock Screen to capture dreams the moment you wake, before they fade."
+            )
+        }
+    }
 }
 
-/// A compact stat tile used on the Home dashboard.
+/// An informational tip on the Home dashboard, explaining a way to get more
+/// out of the app.
+private struct TipCard: View {
+    let icon: String
+    let title: String
+    let detail: String
+    var isComplete: Bool = false
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        if let action {
+            Button(action: action) { card }
+                .buttonStyle(.plain)
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
+        HStack(alignment: .top, spacing: DreamMetric.md) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.dreamPrimary)
+                .frame(width: 44, height: 44)
+                .background(Color.dreamPrimary.opacity(0.12), in: .circle)
+
+            VStack(alignment: .leading, spacing: DreamMetric.xs) {
+                Text(title)
+                    .font(.dreamDisplay(16, .bold))
+                Text(detail)
+                    .font(.dreamBody(13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            if isComplete {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color.dreamPrimary)
+            } else if action != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.dreamText.opacity(0.4))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DreamMetric.lg)
+        .dreamCard()
+    }
+}
+
+/// The latest dream, given visual primacy: large rounded title, mood-tinted
+/// glow, and generous padding so it reads as the screen's centerpiece.
+private struct HeroDreamCard: View {
+    let dream: Dream
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DreamMetric.md) {
+            HStack {
+                Label {
+                    Text(dream.mood.rawValue)
+                        .font(.dreamBody(13, .semibold))
+                } icon: {
+                    Image(systemName: dream.mood.symbol)
+                }
+                .foregroundStyle(dream.mood.tint)
+
+                Spacer()
+
+                Text(dream.date, format: .dateTime.month().day().hour().minute())
+                    .font(.dreamBody(12, .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(dream.title)
+                .font(.dreamDisplay(24))
+                .lineLimit(2)
+
+            Text(dream.entry)
+                .font(.dreamBody(15))
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+
+            if !dream.tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: DreamMetric.sm) {
+                        ForEach(dream.tags, id: \.self) { tag in
+                            Text(tag)
+                                .font(.dreamBody(12, .semibold))
+                                .padding(.horizontal, DreamMetric.md)
+                                .padding(.vertical, DreamMetric.xs + 2)
+                                .background(dream.mood.tint.opacity(0.18), in: .capsule)
+                                .foregroundStyle(dream.mood.tint)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DreamMetric.xl)
+        .dreamCard(glow: dream.mood.tint)
+    }
+}
+
+/// A compact stat tile used on the Home dashboard. Deliberately quiet so it
+/// sits beneath the hero dream rather than competing with it.
 private struct SummaryCard: View {
     let value: String
     let label: String
     let icon: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: DreamMetric.sm) {
             Image(systemName: icon)
-                .foregroundStyle(Color.dreamPrimary)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Color.dreamText.opacity(0.5))
             Text(value)
-                .font(.title.weight(.bold))
+                .font(.dreamDisplay(22, .bold))
             Text(label)
-                .font(.caption)
+                .font(.dreamBody(12, .medium))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.dreamText.opacity(0.08), lineWidth: 1)
-        )
+        .padding(DreamMetric.lg)
+        .dreamCard()
     }
 }
 
@@ -225,11 +409,13 @@ private struct SummaryCard: View {
     HomeView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AuthService())
 }
 
 #Preview("Dark") {
     HomeView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }
