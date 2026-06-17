@@ -26,6 +26,7 @@ struct AuthView: View {
     @State private var mode: Mode = .signUp
     @State private var email = ""
     @State private var password = ""
+    @State private var confirmPassword = ""
 
     var body: some View {
         NavigationStack {
@@ -70,6 +71,10 @@ struct AuthView: View {
                     .autocorrectionDisabled()
                 field("Password", text: $password, isSecure: true)
                     .textContentType(mode == .signUp ? .newPassword : .password)
+                if mode == .signUp {
+                    field("Confirm password", text: $confirmPassword, isSecure: true)
+                        .textContentType(.newPassword)
+                }
             }
 
             if mode == .signIn {
@@ -135,6 +140,7 @@ struct AuthView: View {
                 .foregroundStyle(.secondary)
             Button(mode.toggle) {
                 withAnimation { mode = (mode == .signUp ? .signIn : .signUp) }
+                confirmPassword = ""
                 auth.errorMessage = nil
                 auth.infoMessage = nil
             }
@@ -244,8 +250,14 @@ struct AuthView: View {
     private func submit() {
         Task {
             switch mode {
-            case .signUp: await auth.signUp(email: email, password: password)
-            case .signIn: await auth.signIn(email: email, password: password)
+            case .signUp:
+                guard password == confirmPassword else {
+                    auth.errorMessage = "Passwords don't match."
+                    return
+                }
+                await auth.signUp(email: email, password: password)
+            case .signIn:
+                await auth.signIn(email: email, password: password)
             }
         }
     }

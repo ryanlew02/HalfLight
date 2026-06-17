@@ -15,20 +15,43 @@ struct DreamJournalView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if dreams.isEmpty {
-                    emptyState
-                } else {
-                    library
+            VStack(spacing: 0) {
+                header
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+
+                Group {
+                    if dreams.isEmpty {
+                        emptyState
+                    } else {
+                        library
+                    }
                 }
             }
             .background { DreamBackground() }
-            .navigationTitle("Dream Journal")
+            .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
                     store.add(draft)
                 }
             }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            Text("Journal")
+                .font(.dreamDisplay(22))
+            Spacer()
+            Button {
+                isAddingDream = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(Color.dreamPrimary)
+            }
+            .accessibilityLabel("Add Dream")
         }
     }
 

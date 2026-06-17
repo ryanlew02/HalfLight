@@ -9,7 +9,6 @@ import SwiftUI
 import SwiftData
 
 struct StatsView: View {
-    @AppStorage("userName") private var userName = "Dreamer"
     @Query private var dreams: [Dream]
 
     /// The calendar year shown in the activity grid; defaults to this year.
@@ -19,7 +18,9 @@ struct StatsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    header
+                    Text("Progress")
+                        .font(.dreamDisplay(22))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     progressSection
                     if dreams.isEmpty {
                         emptyHint
@@ -29,26 +30,12 @@ struct StatsView: View {
                         tagSection
                     }
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 20)
             }
             .background { DreamBackground() }
             .toolbar(.hidden, for: .navigationBar)
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .center) {
-            Text(userName)
-                .font(.dreamDisplay(28))
-            Spacer()
-            NavigationLink {
-                SettingsView()
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.title2)
-                    .foregroundStyle(Color.dreamPrimary)
-            }
-            .accessibilityLabel("Settings")
         }
     }
 

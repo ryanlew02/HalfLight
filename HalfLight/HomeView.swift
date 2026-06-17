@@ -78,14 +78,26 @@ struct HomeView: View {
     }
 
     private var greeting: some View {
-        VStack(alignment: .leading, spacing: DreamMetric.xs) {
-            Text("\(greetingText), \(userName)")
-                .font(.dreamDisplay(24))
-            Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
-                .font(.dreamBody(15, .medium))
-                .foregroundStyle(.secondary)
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: DreamMetric.xs) {
+                Text("\(greetingText), \(userName)")
+                    .font(.dreamDisplay(24))
+                Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
+                    .font(.dreamBody(15, .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                isAddingDream = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(Color.dreamPrimary)
+            }
+            .accessibilityLabel("Add Dream")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Today's dream prompt
