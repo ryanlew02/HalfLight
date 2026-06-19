@@ -17,8 +17,10 @@ enum DreamProgression {
     static let xpPerJournalEntry = 10
     static let xpPerLucidSection = 50
 
-    static func totalXP(journalEntries: Int, lucidSections: Int) -> Int {
-        journalEntries * xpPerJournalEntry + lucidSections * xpPerLucidSection
+    static func totalXP(journalEntries: Int, lucidSections: Int, achievementXP: Int = 0) -> Int {
+        journalEntries * xpPerJournalEntry
+            + lucidSections * xpPerLucidSection
+            + achievementXP
     }
 
     static func level(forXP xp: Int) -> Int { xp / xpPerLevel + 1 }

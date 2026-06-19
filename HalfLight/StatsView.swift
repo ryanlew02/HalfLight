@@ -14,14 +14,19 @@ struct StatsView: View {
     /// The calendar year shown in the activity grid; defaults to this year.
     @State private var selectedYear = Calendar.current.component(.year, from: .now)
 
+    /// Measured width of the achievements strip, used to size the medallions so
+    /// the row always fits the card instead of overflowing it.
+    @State private var medallionStripWidth: CGFloat = 0
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     Text("Progress")
-                        .font(.dreamDisplay(22))
+                        .font(.dreamTitle)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     progressSection
+                    achievementsSection
                     if dreams.isEmpty {
                         emptyHint
                     } else {
@@ -45,7 +50,11 @@ struct StatsView: View {
     /// The lucid count is a placeholder until lucid progress is persisted.
     @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
     private var totalXP: Int {
-        DreamProgression.totalXP(journalEntries: dreams.count, lucidSections: lucidSectionsCompleted)
+        DreamProgression.totalXP(
+            journalEntries: dreams.count,
+            lucidSections: lucidSectionsCompleted,
+            achievementXP: Achievement.unlockedXP(for: achievementStats)
+        )
     }
     private var level: Int { DreamProgression.level(forXP: totalXP) }
     private var xpIntoLevel: Int { DreamProgression.xpIntoLevel(forXP: totalXP) }
@@ -88,10 +97,99 @@ struct StatsView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Achievements
+
+    /// Metrics every badge is evaluated against, rebuilt from the current library.
+    private var achievementStats: AchievementStats {
+        AchievementStats(
+            dreams: dreams,
+            journaledDays: journaledDays,
+            lucidSections: lucidSectionsCompleted
+        )
+    }
+
+    private var unlockedAchievements: [Achievement] {
+        Achievement.all.filter { $0.isUnlocked(for: achievementStats) }
+    }
+
+    /// A short teaser for the Progress card: with 40 badges we can't show them
+    /// all, so surface the unlocked ones first, then the locked badges nearest
+    /// completion, capped to a single tidy row.
+    private var previewAchievements: [Achievement] {
+        let lockedByProgress = Achievement.all
+            .filter { !$0.isUnlocked(for: achievementStats) }
+            .sorted { $0.fraction(for: achievementStats) > $1.fraction(for: achievementStats) }
+        return Array((unlockedAchievements + lockedByProgress).prefix(6))
+    }
+
+    /// Medallion side length that lets the previewed badges fit the measured
+    /// strip width, capped so they don't balloon on wide screens.
+    private var medallionSize: CGFloat {
+        let count = previewAchievements.count
+        // Zero until the strip width is measured: a zero-size badge for one
+        // layout pass can't overflow the card, whereas a non-zero guess could.
+        guard count > 0, medallionStripWidth > 0 else { return 0 }
+        let totalSpacing = DreamMetric.sm * CGFloat(count - 1)
+        return min(40, (medallionStripWidth - totalSpacing) / CGFloat(count))
+    }
+
+    private var achievementsSection: some View {
+        NavigationLink {
+            AchievementsView(stats: achievementStats)
+        } label: {
+            VStack(alignment: .leading, spacing: DreamMetric.md) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Achievements")
+                        .font(.dreamDisplay(18, .bold))
+                    Spacer()
+                    Text("\(unlockedAchievements.count) / \(Achievement.all.count)")
+                        .font(.dreamBody(13, .semibold))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.dreamText.opacity(0.4))
+                }
+
+                // A medallion strip: unlocked badges shine in their tint, the
+                // rest stay as muted locks to hint at what's still to earn.
+                // The badge size is derived from the measured width so the row
+                // always fits inside the card and the strip only takes the
+                // vertical space the medallions actually need.
+                HStack(spacing: DreamMetric.sm) {
+                    ForEach(previewAchievements) { achievement in
+                        AchievementMedallion(
+                            symbol: achievement.symbol,
+                            tint: achievement.tint,
+                            unlocked: achievement.isUnlocked(for: achievementStats),
+                            size: medallionSize
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                // Fill the available width so the background reads the card's
+                // content width, not the medallions' own width — otherwise the
+                // measurement feeds back into the size and the row overflows.
+                .frame(maxWidth: .infinity)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { medallionStripWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, width in medallionStripWidth = width }
+                    }
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DreamMetric.lg)
+            .dreamCard()
+        }
+        .buttonStyle(.plain)
+    }
+
     private var emptyHint: some View {
         Text("Record a few dreams to unlock your activity, moods, and themes.")
-            .font(.subheadline)
+            .font(.dreamBodyText)
             .foregroundStyle(.secondary)
+            .dreamBodyLineSpacing()
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -103,14 +201,17 @@ struct StatsView: View {
 
     private var activitySection: some View {
         let weeks = weeks(for: selectedYear)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        return VStack(alignment: .leading, spacing: DreamMetric.md) {
+            Text("Activity")
+                .font(.dreamSectionHeader)
+
+            HStack(spacing: DreamMetric.md) {
                 yearArrow(systemName: "chevron.left", enabled: selectedYear > earliestYear) {
                     selectedYear -= 1
                 }
 
                 Text(String(selectedYear))
-                    .font(.headline)
+                    .font(.dreamCardTitle)
                     .monospacedDigit()
 
                 yearArrow(systemName: "chevron.right", enabled: selectedYear < currentYear) {
@@ -120,7 +221,7 @@ struct StatsView: View {
                 Spacer()
 
                 Text("\(daysJournaledCount(for: selectedYear)) days journaled")
-                    .font(.caption)
+                    .font(.dreamCaption)
                     .foregroundStyle(.secondary)
             }
 
@@ -149,7 +250,7 @@ struct StatsView: View {
     private func yearArrow(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.headline)
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(enabled ? Color.dreamPrimary : Color.dreamText.opacity(0.25))
         }
         .buttonStyle(.plain)
@@ -184,13 +285,13 @@ struct StatsView: View {
     // MARK: - Moods
 
     private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DreamMetric.md) {
             Text("Moods")
-                .font(.headline)
+                .font(.dreamSectionHeader)
             ForEach(moodCounts, id: \.mood) { item in
-                HStack(spacing: 12) {
+                HStack(spacing: DreamMetric.md) {
                     Label(item.mood.rawValue, systemImage: item.mood.symbol)
-                        .font(.subheadline)
+                        .font(.dreamBody(14, .medium))
                         .foregroundStyle(item.mood.tint)
                         .frame(width: 130, alignment: .leading)
 
@@ -203,7 +304,7 @@ struct StatsView: View {
                     .frame(height: 14)
 
                     Text("\(item.count)")
-                        .font(.caption.monospacedDigit())
+                        .font(.dreamCaption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(width: 28, alignment: .trailing)
                 }
@@ -216,17 +317,18 @@ struct StatsView: View {
     @ViewBuilder
     private var tagSection: some View {
         if !topTags.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: DreamMetric.md) {
                 Text("Top themes")
-                    .font(.headline)
+                    .font(.dreamSectionHeader)
                 ForEach(topTags, id: \.tag) { item in
                     HStack {
                         Text(item.tag)
+                            .font(.dreamBody(15, .medium))
                         Spacer()
                         Text("\(item.count)")
+                            .font(.dreamCaption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
-                    .font(.subheadline)
                 }
             }
         }

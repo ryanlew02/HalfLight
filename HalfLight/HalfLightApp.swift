@@ -14,7 +14,7 @@ struct HalfLightApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: Dream.self)
+        .modelContainer(for: [Dream.self, DeletedDream.self])
     }
 }
 

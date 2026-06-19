@@ -60,3 +60,9 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Supabase CLI scratch/cache (regenerated locally; not source)
+**/supabase/.temp/
+
+# macOS
+.DS_Store

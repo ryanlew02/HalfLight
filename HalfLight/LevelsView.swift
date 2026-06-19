@@ -36,7 +36,7 @@ struct LevelsView: View {
     private var earnSection: some View {
         VStack(alignment: .leading, spacing: DreamMetric.md) {
             Text("Ways to earn XP")
-                .font(.dreamDisplay(18, .bold))
+                .font(.dreamSectionHeader)
 
             earnRow(
                 icon: "book.fill",
@@ -50,6 +50,12 @@ struct LevelsView: View {
                 detail: "For each lesson on your lucid path",
                 xp: DreamProgression.xpPerLucidSection
             )
+            earnRow(
+                icon: "rosette",
+                title: "Unlock an achievement",
+                detail: "Bonus XP scaling with each tier you reach",
+                xp: nil
+            )
 
             Text("Every \(DreamProgression.xpPerLevel) XP earns a new level.")
                 .font(.dreamBody(12))
@@ -57,7 +63,9 @@ struct LevelsView: View {
         }
     }
 
-    private func earnRow(icon: String, title: String, detail: String, xp: Int) -> some View {
+    /// `xp == nil` renders a "Varies" badge instead of a fixed amount, used for
+    /// rewards (like achievements) whose value depends on what's earned.
+    private func earnRow(icon: String, title: String, detail: String, xp: Int?) -> some View {
         HStack(spacing: DreamMetric.md) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .bold))
@@ -66,13 +74,13 @@ struct LevelsView: View {
                 .background(Color.dreamPrimary.opacity(0.12), in: .circle)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.dreamDisplay(15, .bold))
+                Text(title).font(.dreamRowTitle)
                 Text(detail).font(.dreamBody(12)).foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
 
-            Text("+\(xp) XP")
+            Text(xp.map { "+\($0) XP" } ?? "Varies")
                 .font(.dreamBody(14, .bold))
                 .foregroundStyle(Color.dreamPrimary)
         }
@@ -86,7 +94,7 @@ struct LevelsView: View {
     private var ranksSection: some View {
         VStack(alignment: .leading, spacing: DreamMetric.md) {
             Text("Levels")
-                .font(.dreamDisplay(18, .bold))
+                .font(.dreamSectionHeader)
 
             ForEach(DreamProgression.ranks) { rank in
                 rankRow(rank)
@@ -106,7 +114,7 @@ struct LevelsView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(rank.name)
-                    .font(.dreamDisplay(15, .bold))
+                    .font(.dreamRowTitle)
                 Text("Level \(rank.minLevel)+")
                     .font(.dreamBody(12))
                     .foregroundStyle(.secondary)

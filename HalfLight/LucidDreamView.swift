@@ -144,10 +144,10 @@ private struct LucidSectionHeader: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(section.title)
-                    .font(.headline.weight(.bold))
+                    .font(.dreamCardTitle)
                     .foregroundStyle(isUnlocked ? Color.dreamText : .secondary)
                 Text(section.subtitle)
-                    .font(.caption)
+                    .font(.dreamCaption)
                     .foregroundStyle(.secondary)
             }
 
@@ -224,7 +224,6 @@ private struct LucidLessonMap: View {
     private let amplitude: CGFloat = 72
     private let topPad: CGFloat = 70
     private let bottomPad: CGFloat = 70
-    
 
     private var contentHeight: CGFloat {
         CGFloat(max(lessons.count - 1, 0)) * vSpacing + topPad + bottomPad
@@ -278,28 +277,28 @@ private struct LessonInfoCallout: View {
     let lesson: LucidLesson
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DreamMetric.md) {
             Text(lesson.title)
-                .font(.headline.weight(.bold))
+                .font(.dreamCardTitle)
                 .foregroundStyle(Color.dreamText)
 
             if lesson.status == .locked {
                 Text("Complete earlier lessons to unlock")
-                    .font(.caption)
+                    .font(.dreamCaption)
                     .foregroundStyle(.secondary)
             }
 
             Button {
                 // Begin the lesson.
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: DreamMetric.sm) {
                     Text("Start")
-                        .font(.subheadline.weight(.bold))
+                        .font(.dreamDisplay(15, .bold))
 
                     Spacer(minLength: 0)
 
                     Text("+\(lesson.xp) XP")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.dreamBody(14, .semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.vertical, 10)

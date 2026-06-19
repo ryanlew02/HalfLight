@@ -42,6 +42,38 @@ extension Font {
     static func dreamBody(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .rounded)
     }
+
+    // MARK: Semantic type ramp
+    //
+    // Named roles built on the two faces above. Prefer these over raw
+    // `dreamDisplay(_:)` / `dreamBody(_:)` sizes so the hierarchy stays
+    // consistent across screens — one place to tune, no magic numbers drifting
+    // per-view. Reach for the size-based variants only for genuine one-offs.
+
+    /// Top-of-screen page title (e.g. "Progress", "Journal"). Heavy + rounded.
+    static let dreamTitle = dreamDisplay(22)
+    /// A large hero title — greetings, dream titles in the hero card.
+    static let dreamLargeTitle = dreamDisplay(24)
+    /// Section / card header sitting above grouped content.
+    static let dreamSectionHeader = dreamDisplay(20, .bold)
+    /// A card's own title (the headline inside a surface).
+    static let dreamCardTitle = dreamDisplay(16, .bold)
+    /// A compact card title, used in dense rows.
+    static let dreamRowTitle = dreamDisplay(15, .bold)
+    /// Primary running body copy inside cards and detail screens.
+    static let dreamBodyText = dreamBody(15)
+    /// Secondary supporting copy — the line beneath a title.
+    static let dreamSubtext = dreamBody(13)
+    /// Small metadata / counts / pill labels.
+    static let dreamCaption = dreamBody(12, .semibold)
+}
+
+extension View {
+    /// Comfortable line spacing for multi-line body copy. Single-line labels are
+    /// unaffected, so this is safe to apply broadly to running text.
+    func dreamBodyLineSpacing() -> some View {
+        self.lineSpacing(4)
+    }
 }
 
 // MARK: - Elevated surface

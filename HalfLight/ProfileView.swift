@@ -75,12 +75,12 @@ struct ProfileView: View {
                 Image(systemName: "sparkles")
                     .foregroundStyle(Color.dreamPrimary)
                 Text("Top themes")
-                    .font(.dreamDisplay(20, .bold))
+                    .font(.dreamSectionHeader)
             }
 
             if topThemes.isEmpty {
                 Text("Journal dreams to see your top themes.")
-                    .font(.dreamBody(14))
+                    .font(.dreamBodyText)
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(Array(topThemes.enumerated()), id: \.element.name) { index, theme in
@@ -128,9 +128,9 @@ struct ProfileView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Account active")
-                        .font(.dreamDisplay(16, .bold))
+                        .font(.dreamCardTitle)
                     Text(auth.email ?? "Your dreams are backed up")
-                        .font(.dreamBody(13))
+                        .font(.dreamSubtext)
                         .foregroundStyle(.secondary)
                 }
 
@@ -152,9 +152,9 @@ struct ProfileView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Create an account")
-                            .font(.dreamDisplay(16, .bold))
+                            .font(.dreamCardTitle)
                         Text("Back up and sync your dreams")
-                            .font(.dreamBody(13))
+                            .font(.dreamSubtext)
                             .foregroundStyle(.secondary)
                     }
 
@@ -250,7 +250,7 @@ struct AllThemesView: View {
             VStack(spacing: DreamMetric.md) {
                 if rows.isEmpty {
                     Text("No themes match “\(query)”.")
-                        .font(.dreamBody(14))
+                        .font(.dreamBodyText)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 40)

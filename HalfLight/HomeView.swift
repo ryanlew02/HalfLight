@@ -82,7 +82,7 @@ struct HomeView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: DreamMetric.xs) {
                 Text("\(greetingText), \(userName)")
-                    .font(.dreamDisplay(24))
+                    .font(.dreamLargeTitle)
                 Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
                     .font(.dreamBody(15, .medium))
                     .foregroundStyle(.secondary)
@@ -128,7 +128,7 @@ struct HomeView: View {
             }
 
             Text("Capture it now before the details slip away.")
-                .font(.dreamBody(15))
+                .font(.dreamBodyText)
                 .foregroundStyle(.secondary)
 
             HStack(spacing: DreamMetric.md) {
@@ -174,7 +174,7 @@ struct HomeView: View {
         if let latest = dreams.first {
             VStack(alignment: .leading, spacing: DreamMetric.md) {
                 Text("Latest dream")
-                    .font(.dreamDisplay(20, .bold))
+                    .font(.dreamSectionHeader)
                 NavigationLink {
                     DreamDetailView(dream: latest)
                 } label: {
@@ -193,11 +193,12 @@ struct HomeView: View {
                 .font(.system(size: 44, weight: .regular))
                 .foregroundStyle(Color.dreamPrimary.opacity(0.7))
             Text("No dreams yet")
-                .font(.dreamDisplay(20, .bold))
+                .font(.dreamSectionHeader)
             Text("Tap the + below to record your first — before it fades.")
-                .font(.dreamBody(15))
+                .font(.dreamBodyText)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .lineSpacing(4)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, DreamMetric.xxl)
@@ -219,9 +220,9 @@ struct HomeView: View {
 
                 VStack(alignment: .leading, spacing: DreamMetric.xs) {
                     Text("Revisit a random dream")
-                        .font(.dreamDisplay(16, .bold))
+                        .font(.dreamCardTitle)
                     Text("Rediscover a memory from your journal")
-                        .font(.dreamBody(13))
+                        .font(.dreamSubtext)
                         .foregroundStyle(.secondary)
                 }
 
@@ -262,7 +263,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: DreamMetric.md) {
             HStack(spacing: DreamMetric.sm) {
                 Text("Tips")
-                    .font(.dreamDisplay(20, .bold))
+                    .font(.dreamSectionHeader)
                 Text("\(tipsRemaining)")
                     .font(.dreamDisplay(13, .bold))
                     .foregroundStyle(.white)
@@ -316,10 +317,11 @@ private struct TipCard: View {
 
             VStack(alignment: .leading, spacing: DreamMetric.xs) {
                 Text(title)
-                    .font(.dreamDisplay(16, .bold))
+                    .font(.dreamCardTitle)
                 Text(detail)
-                    .font(.dreamBody(13))
+                    .font(.dreamSubtext)
                     .foregroundStyle(.secondary)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -365,12 +367,13 @@ private struct HeroDreamCard: View {
             }
 
             Text(dream.title)
-                .font(.dreamDisplay(24))
+                .font(.dreamLargeTitle)
                 .lineLimit(2)
 
             Text(dream.entry)
-                .font(.dreamBody(15))
+                .font(.dreamBodyText)
                 .foregroundStyle(.secondary)
+                .lineSpacing(4)
                 .lineLimit(3)
 
             if !dream.tags.isEmpty {

@@ -187,7 +187,7 @@ struct AddDreamView: View {
                         Image(systemName: "sparkles")
                     }
                 }
-                .font(.subheadline.weight(.medium))
+                .font(.dreamBody(15, .semibold))
                 .foregroundStyle(canAutoTag ? Color.dreamPrimary : .secondary)
             }
             .buttonStyle(.plain)
@@ -195,7 +195,7 @@ struct AddDreamView: View {
 
             if let error = analyzer.errorMessage {
                 Text(error)
-                    .font(.caption)
+                    .font(.dreamCaption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -234,14 +234,14 @@ struct AddDreamView: View {
                     transcriber.isRecording ? "Listening… tap to stop" : "Dictate your dream",
                     systemImage: transcriber.isRecording ? "stop.circle.fill" : "mic.fill"
                 )
-                .font(.subheadline.weight(.medium))
+                .font(.dreamBody(15, .semibold))
                 .foregroundStyle(transcriber.isRecording ? Color.red : Color.dreamPrimary)
             }
             .buttonStyle(.plain)
 
             if let error = transcriber.errorMessage {
                 Text(error)
-                    .font(.caption)
+                    .font(.dreamCaption)
                     .foregroundStyle(.secondary)
             }
         }

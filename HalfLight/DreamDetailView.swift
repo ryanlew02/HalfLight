@@ -23,7 +23,8 @@ struct DreamDetailView: View {
                 header
 
                 Text(dream.entry)
-                    .font(.body)
+                    .font(.dreamBody(16))
+                    .lineSpacing(5)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if !dream.tags.isEmpty {
@@ -75,7 +76,7 @@ struct DreamDetailView: View {
             showDeleteConfirm = true
         } label: {
             Label("Delete Dream", systemImage: "trash")
-                .font(.body.weight(.medium))
+                .font(.dreamBody(15, .semibold))
                 .frame(maxWidth: .infinity)
         }
         .padding(.top, 8)
@@ -84,20 +85,20 @@ struct DreamDetailView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: DreamMetric.sm) {
             Label {
                 Text(dream.mood.rawValue)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.dreamBody(14, .semibold))
             } icon: {
                 Image(systemName: dream.mood.symbol)
             }
             .foregroundStyle(dream.mood.tint)
 
             Text(dream.title)
-                .font(.largeTitle.weight(.bold))
+                .font(.dreamDisplay(30))
 
             Text(dream.date, format: .dateTime.weekday(.wide).month().day().hour().minute())
-                .font(.footnote)
+                .font(.dreamSubtext)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,28 +109,29 @@ struct DreamDetailView: View {
     @ViewBuilder
     private var aiSection: some View {
         if let category = dream.aiCategory, let meaning = dream.aiMeaning {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: DreamMetric.md) {
+                HStack(spacing: DreamMetric.sm) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(Color.dreamPrimary)
                     Text("AI Insight")
-                        .font(.headline)
+                        .font(.dreamCardTitle)
                 }
 
                 Text(category)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .font(.dreamCaption)
+                    .padding(.horizontal, DreamMetric.md)
+                    .padding(.vertical, DreamMetric.xs + 2)
                     .background(Color.dreamPrimary.opacity(0.18), in: .capsule)
                     .foregroundStyle(Color.dreamPrimary)
 
                 Text(meaning)
-                    .font(.body)
+                    .font(.dreamBodyText)
                     .foregroundStyle(.secondary)
+                    .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
+            .padding(DreamMetric.xl)
             .dreamCard()
         } else {
             VStack(alignment: .leading, spacing: 10) {
@@ -150,7 +152,7 @@ struct DreamDetailView: View {
 
                 if let error = analyzer.errorMessage {
                     Text(error)
-                        .font(.footnote)
+                        .font(.dreamSubtext)
                         .foregroundStyle(.red)
                 }
             }
@@ -171,9 +173,9 @@ struct DreamDetailView: View {
     // MARK: - Tags
 
     private var tagCloud: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: DreamMetric.sm) {
             Text("Themes")
-                .font(.headline)
+                .font(.dreamSectionHeader)
             FlowTags(tags: dream.tags, tint: dream.mood.tint)
         }
     }
@@ -195,9 +197,9 @@ private struct FlowTags: View {
         HStack(spacing: 8) {
             ForEach(tags, id: \.self) { tag in
                 Text(tag)
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .font(.dreamBody(12, .semibold))
+                    .padding(.horizontal, DreamMetric.md)
+                    .padding(.vertical, DreamMetric.xs + 2)
                     .background(tint.opacity(0.18), in: .capsule)
                     .foregroundStyle(tint)
             }

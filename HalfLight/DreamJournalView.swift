@@ -42,7 +42,7 @@ struct DreamJournalView: View {
     private var header: some View {
         HStack(alignment: .center) {
             Text("Journal")
-                .font(.dreamDisplay(22))
+                .font(.dreamTitle)
             Spacer()
             Button {
                 isAddingDream = true
@@ -105,11 +105,11 @@ struct DreamCard: View {
     let dream: Dream
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: DreamMetric.sm) {
             HStack {
                 Label {
                     Text(dream.mood.rawValue)
-                        .font(.caption.weight(.semibold))
+                        .font(.dreamCaption)
                 } icon: {
                     Image(systemName: dream.mood.symbol)
                 }
@@ -118,26 +118,28 @@ struct DreamCard: View {
                 Spacer()
 
                 Text(dream.date, format: .dateTime.month().day().hour().minute())
-                    .font(.caption2)
+                    .font(.dreamBody(12, .medium))
                     .foregroundStyle(.secondary)
             }
 
             Text(dream.title)
-                .font(.title3.weight(.semibold))
+                .font(.dreamCardTitle)
+                .lineLimit(2)
 
             Text(dream.entry)
-                .font(.subheadline)
+                .font(.dreamSubtext)
                 .foregroundStyle(.secondary)
+                .lineSpacing(3)
                 .lineLimit(3)
 
             if !dream.tags.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: DreamMetric.sm) {
                         ForEach(dream.tags, id: \.self) { tag in
                             Text(tag)
-                                .font(.caption2.weight(.medium))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
+                                .font(.dreamBody(12, .semibold))
+                                .padding(.horizontal, DreamMetric.md)
+                                .padding(.vertical, DreamMetric.xs)
                                 .background(dream.mood.tint.opacity(0.18), in: .capsule)
                                 .foregroundStyle(dream.mood.tint)
                         }
@@ -145,7 +147,7 @@ struct DreamCard: View {
                 }
             }
         }
-        .padding(16)
+        .padding(DreamMetric.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.dreamSurface, in: .rect(cornerRadius: 20))
         .overlay(

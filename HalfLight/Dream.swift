@@ -10,8 +10,9 @@ import SwiftData
 
 /// A single recorded dream entry, persisted locally via SwiftData.
 ///
-/// The `remoteID` / `userID` / `updatedAt` / `needsUpload` fields are local-only
-/// scaffolding for the future Supabase sync layer; they have no effect yet.
+/// Local SwiftData is the source of truth. The `remoteID` / `userID` /
+/// `updatedAt` / `needsUpload` fields drive the Supabase sync layer (see
+/// `DreamStore` / `DreamSync`) that backs dreams up while the user is signed in.
 @Model
 final class Dream {
     /// Stable local identifier. Also used to match against the remote row once synced.
@@ -30,7 +31,7 @@ final class Dream {
     /// AI-generated interpretation of what the dream may mean; `nil` until analyzed.
     var aiMeaning: String?
 
-    // MARK: Sync scaffolding (unused until Supabase is wired up)
+    // MARK: Supabase sync state
 
     /// The Supabase row id once this dream has been uploaded; `nil` while local-only.
     var remoteID: UUID?

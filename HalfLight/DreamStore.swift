@@ -18,6 +18,23 @@ struct DreamDraft {
     var tags: [String]
 }
 
+/// A record that a dream was deleted, kept so a later sync can never resurrect it.
+/// `needsRemoteDelete` stays true until we've confirmed the row is gone from the
+/// backend; until then every reconcile retries the deletion. Tombstones are
+/// pruned once the remote row is confirmed absent.
+@Model
+final class DeletedDream {
+    @Attribute(.unique) var id: UUID
+    var needsRemoteDelete: Bool
+    var deletedAt: Date
+
+    init(id: UUID, needsRemoteDelete: Bool, deletedAt: Date = .now) {
+        self.id = id
+        self.needsRemoteDelete = needsRemoteDelete
+        self.deletedAt = deletedAt
+    }
+}
+
 @MainActor
 @Observable
 final class DreamStore {
@@ -68,14 +85,35 @@ final class DreamStore {
         pushRemote(dream)
     }
 
-    /// Delete a dream from the store, and remotely if it had been synced.
+    /// Delete a dream from the store, and remotely if it had been synced. A
+    /// tombstone is recorded so a concurrent or later `reconcile` can never bring
+    /// the dream back, and so the remote deletion is retried until it sticks.
     func delete(_ dream: Dream) {
         let id = dream.id
         let wasSynced = dream.remoteID != nil
         context.delete(dream)
+        // Only tombstone when a backend is in play; local-only stores can't be
+        // resurrected by a sync, so there's nothing to guard against.
+        if sync != nil {
+            context.insert(DeletedDream(id: id, needsRemoteDelete: wasSynced))
+        }
         save()
         guard let sync, wasSynced else { return }
-        Task { try? await sync.delete(id: id) }
+        Task {
+            if (try? await sync.delete(id: id)) != nil {
+                clearTombstone(id, ifConfirmedRemoteDelete: true)
+            }
+        }
+    }
+
+    /// Mark a tombstone's remote deletion as done (the row is gone from the
+    /// backend); the tombstone itself lingers until a reconcile confirms absence.
+    private func clearTombstone(_ id: UUID, ifConfirmedRemoteDelete: Bool) {
+        guard ifConfirmedRemoteDelete else { return }
+        let descriptor = FetchDescriptor<DeletedDream>(predicate: #Predicate<DeletedDream> { $0.id == id })
+        guard let tomb = try? context.fetch(descriptor).first else { return }
+        tomb.needsRemoteDelete = false
+        save()
     }
 
     // MARK: - Remote sync
@@ -110,8 +148,17 @@ final class DreamStore {
         var localByID = Dictionary(locals.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let remoteIDs = Set(remote.map(\.id))
 
+        let tombstones = (try? context.fetch(FetchDescriptor<DeletedDream>())) ?? []
+        let tombstoneByID = Dictionary(tombstones.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+
         // Remote → local (insert new, last-write-wins on conflicts).
         for record in remote {
+            // A deleted dream must never be brought back: skip the insert and make
+            // sure it's queued for remote deletion (it's clearly still up there).
+            if let tomb = tombstoneByID[record.id] {
+                tomb.needsRemoteDelete = true
+                continue
+            }
             if let local = localByID[record.id] {
                 if record.updatedAt > local.updatedAt {
                     record.apply(to: local)
@@ -128,6 +175,14 @@ final class DreamStore {
             }
         }
 
+        // Retry any remote deletions that haven't been confirmed yet (covers the
+        // race where a reconcile fetched a dream before its delete landed).
+        for tomb in tombstones where tomb.needsRemoteDelete {
+            if (try? await sync.delete(id: tomb.id)) != nil {
+                tomb.needsRemoteDelete = false
+            }
+        }
+
         // Local dreams missing remotely: either deleted elsewhere, or never
         // uploaded (anonymous / this-user) and should be pushed up.
         for local in locals where !remoteIDs.contains(local.id) {
@@ -140,6 +195,13 @@ final class DreamStore {
                 try? await sync.upsert(local.record(userID: userID))
             }
             // A dream stamped with a different user is left untouched.
+        }
+
+        // Prune tombstones that are fully resolved: the remote delete is done and
+        // the row is no longer coming back in the fetch. (Rows deleted in this
+        // pass still appear in `remoteIDs`, so they're pruned on a later reconcile.)
+        for tomb in tombstones where !tomb.needsRemoteDelete && !remoteIDs.contains(tomb.id) {
+            context.delete(tomb)
         }
 
         save()
@@ -214,7 +276,7 @@ enum PreviewData {
     /// An in-memory container seeded with samples, for SwiftUI previews.
     static let container: ModelContainer = {
         let container = try! ModelContainer(
-            for: Dream.self,
+            for: Dream.self, DeletedDream.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         for dream in Dream.makeSamples() {
