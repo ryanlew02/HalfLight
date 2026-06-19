@@ -139,7 +139,7 @@ struct HomeView: View {
 
                 Button("I'm not sure") {
                     skippedDay = Calendar.current.startOfDay(for: .now).timeIntervalSince1970
-                    SkippedDayStore.record(.now)
+                    store.recordSkippedDay()
                     withAnimation { showSkippedMessage = true }
                     Task {
                         try? await Task.sleep(for: .seconds(2))
@@ -243,6 +243,7 @@ struct HomeView: View {
 
     private var summary: some View {
         HStack(spacing: DreamMetric.md) {
+            SummaryCard(value: "\(streak.current)", label: "Day streak", icon: "flame.fill", isLit: isStreakLit)
             SummaryCard(value: "\(dreams.count)", label: "Total dreams", icon: "book.fill")
             SummaryCard(value: "\(weekCount)", label: "This week", icon: "calendar")
         }
@@ -251,6 +252,23 @@ struct HomeView: View {
     private var weekCount: Int {
         let weekAgo = Date.now.addingTimeInterval(-7 * 24 * 60 * 60)
         return dreams.filter { $0.date >= weekAgo }.count
+    }
+
+    /// Days journaled — a dream recorded or marked "can't remember" — used to
+    /// derive the streak. Mirrors the set the Stats activity grid is built from.
+    private var journaledDays: Set<Date> {
+        let calendar = Calendar.current
+        let dreamDays = dreams.map { calendar.startOfDay(for: $0.date) }
+        return Set(dreamDays).union(store.skippedDays)
+    }
+
+    private var streak: Streak { Streak.from(journaledDays: journaledDays) }
+
+    /// The streak card lights up once today is handled — a dream recorded *or*
+    /// marked "can't remember", which count the same toward the streak — and the
+    /// run is live. A small reward for keeping the chain going.
+    private var isStreakLit: Bool {
+        streak.current > 0 && journaledDays.contains(Calendar.current.startOfDay(for: .now))
     }
 
     // MARK: - Tips
@@ -403,21 +421,25 @@ private struct SummaryCard: View {
     let value: String
     let label: String
     let icon: String
+    /// When true the card glows and warms its icon/value — used to celebrate a
+    /// live streak the moment today's dream is logged.
+    var isLit = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: DreamMetric.sm) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Color.dreamText.opacity(0.5))
+                .font(.system(size: 16, weight: isLit ? .bold : .medium))
+                .foregroundStyle(isLit ? Color.dreamPrimary : Color.dreamText.opacity(0.5))
             Text(value)
                 .font(.dreamDisplay(22, .bold))
+                .foregroundStyle(isLit ? Color.dreamPrimary : Color.dreamText)
             Text(label)
                 .font(.dreamBody(12, .medium))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(DreamMetric.lg)
-        .dreamCard()
+        .dreamCard(glow: isLit ? .dreamPrimary : nil)
     }
 }
 

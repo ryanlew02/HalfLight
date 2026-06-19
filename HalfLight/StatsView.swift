@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct StatsView: View {
+    @Environment(DreamStore.self) private var store
     @Query private var dreams: [Dream]
 
     /// The calendar year shown in the activity grid; defaults to this year.
@@ -26,6 +27,7 @@ struct StatsView: View {
                         .font(.dreamTitle)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     progressSection
+                    streakSection
                     achievementsSection
                     if dreams.isEmpty {
                         emptyHint
@@ -49,17 +51,31 @@ struct StatsView: View {
 
     /// The lucid count is a placeholder until lucid progress is persisted.
     @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
+
+    /// Distinct days that have earned journaling XP: a dream was recorded, the day
+    /// was marked "can't remember", or a since-deleted dream once credited it.
+    /// Set-union caps each day at one credit and keeps XP from changing on delete.
+    private var xpEarningDays: Set<Date> {
+        let calendar = Calendar.current
+        let dreamDays = Set(dreams.map { calendar.startOfDay(for: $0.date) })
+        return dreamDays
+            .union(store.skippedDays)
+            .union(store.creditedDays)
+    }
+
     private var totalXP: Int {
         DreamProgression.totalXP(
-            journalEntries: dreams.count,
+            journaledDays: xpEarningDays.count,
             lucidSections: lucidSectionsCompleted,
             achievementXP: Achievement.unlockedXP(for: achievementStats)
         )
     }
     private var level: Int { DreamProgression.level(forXP: totalXP) }
     private var xpIntoLevel: Int { DreamProgression.xpIntoLevel(forXP: totalXP) }
+    private var xpForLevel: Int { DreamProgression.xpForCurrentLevel(forXP: totalXP) }
     private var levelProgress: Double { DreamProgression.progress(forXP: totalXP) }
     private var rank: DreamProgression.Rank { DreamProgression.rank(forLevel: level) }
+    private var streak: Streak { Streak.from(journaledDays: journaledDays) }
 
     private var progressSection: some View {
         NavigationLink {
@@ -86,7 +102,7 @@ struct StatsView: View {
                 SegmentedProgressBar(progress: levelProgress)
                     .frame(height: 16)
 
-                Text("\(xpIntoLevel) / \(DreamProgression.xpPerLevel) XP to Level \(level + 1)")
+                Text("\(xpIntoLevel) / \(xpForLevel) XP to Level \(level + 1)")
                     .font(.dreamBody(12))
                     .foregroundStyle(.secondary)
             }
@@ -95,6 +111,31 @@ struct StatsView: View {
             .dreamCard()
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Streak
+
+    private var streakSection: some View {
+        HStack(spacing: DreamMetric.md) {
+            streakCard(value: streak.current, label: "Current streak", icon: "flame.fill")
+            streakCard(value: streak.longest, label: "Highest streak", icon: "trophy.fill")
+        }
+    }
+
+    private func streakCard(value: Int, label: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: DreamMetric.sm) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.dreamPrimary)
+            Text(value == 1 ? "1 day" : "\(value) days")
+                .font(.dreamDisplay(22, .bold))
+            Text(label)
+                .font(.dreamBody(12, .medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DreamMetric.lg)
+        .dreamCard()
     }
 
     // MARK: - Achievements
@@ -341,7 +382,7 @@ struct StatsView: View {
     private var journaledDays: Set<Date> {
         let calendar = Calendar.current
         let dreamDays = dreams.map { calendar.startOfDay(for: $0.date) }
-        return Set(dreamDays).union(SkippedDayStore.days())
+        return Set(dreamDays).union(store.skippedDays)
     }
 
     private var currentYear: Int {

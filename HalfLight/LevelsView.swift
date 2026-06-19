@@ -40,9 +40,9 @@ struct LevelsView: View {
 
             earnRow(
                 icon: "book.fill",
-                title: "Record a dream",
-                detail: "For every journal entry",
-                xp: DreamProgression.xpPerJournalEntry
+                title: "Log your night",
+                detail: "Once a day — record a dream or mark it forgotten",
+                xp: DreamProgression.xpPerJournaledDay
             )
             earnRow(
                 icon: "moon.stars.fill",
@@ -57,7 +57,7 @@ struct LevelsView: View {
                 xp: nil
             )
 
-            Text("Every \(DreamProgression.xpPerLevel) XP earns a new level.")
+            Text("Each level costs more XP than the last — the deeper you go, the longer the climb.")
                 .font(.dreamBody(12))
                 .foregroundStyle(.secondary)
         }

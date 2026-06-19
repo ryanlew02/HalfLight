@@ -42,12 +42,26 @@ final class DreamStore {
     /// Remote backup, or `nil` to stay local-only (previews, package absent).
     private let sync: DreamSyncing?
 
+    /// Days marked "can't remember", and days whose journaling XP must outlive a
+    /// deleted dream. Held here — rather than read straight from `DayLog` in the
+    /// views — so SwiftUI re-renders the instant either changes; `DayLog` remains
+    /// the UserDefaults-backed persistence layer behind them.
+    private(set) var skippedDays: Set<Date> = DayLog.skipped.days()
+    private(set) var creditedDays: Set<Date> = DayLog.journalCredit.days()
+
     init(context: ModelContext, sync: DreamSyncing? = nil) {
         self.context = context
         self.sync = sync
     }
 
     // MARK: - Mutations
+
+    /// Mark today as journaled even when no dream was recorded ("can't remember").
+    /// Idempotent per day; bumps the observable set so XP updates immediately.
+    func recordSkippedDay(_ date: Date = .now) {
+        DayLog.skipped.record(date)
+        skippedDays = DayLog.skipped.days()
+    }
 
     /// Create and persist a new dream from the form draft.
     func add(_ draft: DreamDraft) {
@@ -91,6 +105,10 @@ final class DreamStore {
     func delete(_ dream: Dream) {
         let id = dream.id
         let wasSynced = dream.remoteID != nil
+        // Preserve the day's journaling XP: once a day has been credited, deleting
+        // the dream that earned it must not claw the XP back.
+        DayLog.journalCredit.record(dream.date)
+        creditedDays = DayLog.journalCredit.days()
         context.delete(dream)
         // Only tombstone when a backend is in play; local-only stores can't be
         // resurrected by a sync, so there's nothing to guard against.

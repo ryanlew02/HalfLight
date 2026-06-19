@@ -36,27 +36,7 @@ struct AchievementStats {
         distinctMoods = Set(dreams.map(\.mood)).count
         distinctTags = Set(dreams.flatMap(\.tags)).count
         self.lucidSections = lucidSections
-        longestStreak = Self.longestStreak(in: journaledDays)
-    }
-
-    /// The longest chain of consecutive calendar days present in `days`.
-    private static func longestStreak(in days: Set<Date>) -> Int {
-        guard !days.isEmpty else { return 0 }
-        let calendar = Calendar.current
-        let sorted = days.map { calendar.startOfDay(for: $0) }.sorted()
-
-        var longest = 1
-        var current = 1
-        for (previous, day) in zip(sorted, sorted.dropFirst()) {
-            if let next = calendar.date(byAdding: .day, value: 1, to: previous),
-               calendar.isDate(next, inSameDayAs: day) {
-                current += 1
-                longest = max(longest, current)
-            } else {
-                current = 1
-            }
-        }
-        return longest
+        longestStreak = Streak.from(journaledDays: journaledDays).longest
     }
 }
 
