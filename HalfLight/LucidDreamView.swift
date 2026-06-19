@@ -108,6 +108,7 @@ struct LucidDreamView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 40)
             }
+            .tabBarClearance()
             .background { DreamBackground().ignoresSafeArea() }
             .navigationTitle("Lucid Path")
             .navigationBarTitleDisplayMode(.inline)

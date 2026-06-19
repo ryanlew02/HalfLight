@@ -281,10 +281,8 @@ final class MockAuthBackend: AuthBackend {
 /// Real backend backed by Supabase Auth. Note: exact API names can vary slightly
 /// between supabase-swift versions — adjust here if the compiler flags them.
 final class SupabaseAuthBackend: AuthBackend {
-    private let client = SupabaseClient(
-        supabaseURL: SupabaseConfig.url,
-        supabaseKey: SupabaseConfig.anonKey
-    )
+    // Shared with DreamSync so auth session and dream backup use the same JWT.
+    private var client: SupabaseClient { SupabaseClientProvider.shared }
 
     func currentEmail() async -> String? {
         (try? await client.auth.session)?.user.email

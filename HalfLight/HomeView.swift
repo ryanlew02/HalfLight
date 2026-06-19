@@ -51,6 +51,7 @@ struct HomeView: View {
                 .padding(.top, DreamMetric.sm)
                 .padding(.bottom, DreamMetric.xl)
             }
+            .tabBarClearance()
             .background { NightSkyBackground() }
             .navigationDestination(item: $randomDream) { dream in
                 DreamDetailView(dream: dream)

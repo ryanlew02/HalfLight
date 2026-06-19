@@ -12,7 +12,10 @@ struct DreamDetailView: View {
     let dream: Dream
 
     @Environment(DreamStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     @State private var isEditing = false
+    @State private var analyzer = DreamAnalyzer()
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         ScrollView {
@@ -26,9 +29,14 @@ struct DreamDetailView: View {
                 if !dream.tags.isEmpty {
                     tagCloud
                 }
+
+                aiSection
+
+                deleteButton
             }
             .padding(20)
         }
+        .tabBarClearance()
         .background { DreamBackground() }
         .navigationTitle(dream.title)
         #if os(iOS)
@@ -42,8 +50,35 @@ struct DreamDetailView: View {
         .fullScreenCover(isPresented: $isEditing) {
             AddDreamView(existingDream: dream) { draft in
                 store.update(dream, with: draft)
+            } onDelete: {
+                dismiss()
+                store.delete(dream)
             }
         }
+        .confirmationDialog(
+            "Delete this dream?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                dismiss()
+                store.delete(dream)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This can't be undone.")
+        }
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            showDeleteConfirm = true
+        } label: {
+            Label("Delete Dream", systemImage: "trash")
+                .font(.body.weight(.medium))
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 8)
     }
 
     // MARK: - Header
@@ -66,6 +101,71 @@ struct DreamDetailView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - AI analysis
+
+    @ViewBuilder
+    private var aiSection: some View {
+        if let category = dream.aiCategory, let meaning = dream.aiMeaning {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(Color.dreamPrimary)
+                    Text("AI Insight")
+                        .font(.headline)
+                }
+
+                Text(category)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.dreamPrimary.opacity(0.18), in: .capsule)
+                    .foregroundStyle(Color.dreamPrimary)
+
+                Text(meaning)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .dreamCard()
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Button(action: analyze) {
+                    HStack(spacing: 8) {
+                        if analyzer.isAnalyzing {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "sparkles")
+                        }
+                        Text(analyzer.isAnalyzing ? "Analyzing…" : "Analyze with AI")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(analyzer.isAnalyzing)
+
+                if let error = analyzer.errorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private func analyze() {
+        Task {
+            guard let result = await analyzer.analyze(
+                title: dream.title,
+                entry: dream.entry,
+                mood: dream.mood.rawValue
+            ) else { return }
+            store.setAnalysis(dream, category: result.category, meaning: result.meaning)
+        }
     }
 
     // MARK: - Tags

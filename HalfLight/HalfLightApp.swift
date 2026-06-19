@@ -38,13 +38,26 @@ private struct RootView: View {
             }
         }
         .task {
-            guard store == nil else { return }
-            let store = DreamStore(context: modelContext)
-            store.seedSampleDataIfNeeded()
-            self.store = store
-        }
-        .task {
+            if store == nil {
+                store = makeStore()
+            }
+            // Restoring may flip auth to signed-in, which triggers a reconcile
+            // via onChange below.
             await auth.restore()
         }
+        .onChange(of: auth.status) { _, status in
+            if status == .signedIn {
+                store?.reconcileWithRemote()
+            }
+        }
+    }
+
+    /// Builds the store with a remote sync backend when Supabase is available.
+    private func makeStore() -> DreamStore {
+        #if canImport(Supabase)
+        DreamStore(context: modelContext, sync: SupabaseDreamSync())
+        #else
+        DreamStore(context: modelContext)
+        #endif
     }
 }

@@ -12,8 +12,12 @@ struct AddDreamView: View {
     var existingDream: Dream?
     /// Called with the captured values when the user taps Save.
     let onSave: (DreamDraft) -> Void
+    /// Called when the user deletes the dream while editing. `nil` hides the
+    /// delete option (e.g. when creating a new dream).
+    var onDelete: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirm = false
 
     @State private var title: String
     @State private var entry: String
@@ -23,10 +27,16 @@ struct AddDreamView: View {
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @State private var transcriber = DreamTranscriber()
     @State private var entryBeforeDictation = ""
+    @State private var analyzer = DreamAnalyzer()
 
-    init(existingDream: Dream? = nil, onSave: @escaping (DreamDraft) -> Void) {
+    init(
+        existingDream: Dream? = nil,
+        onSave: @escaping (DreamDraft) -> Void,
+        onDelete: (() -> Void)? = nil
+    ) {
         self.existingDream = existingDream
         self.onSave = onSave
+        self.onDelete = onDelete
         _title = State(initialValue: existingDream?.title ?? "")
         _entry = State(initialValue: existingDream?.entry ?? "")
         _mood = State(initialValue: existingDream?.mood ?? .vivid)
@@ -79,11 +89,39 @@ struct AddDreamView: View {
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
                         #endif
+
+                    autoTagControl
                 }
                 .listRowBackground(Color.dreamSurface)
+
+                if isEditing, onDelete != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            Label("Delete Dream", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .listRowBackground(Color.dreamSurface)
+                }
             }
             .scrollContentBackground(.hidden)
             .background { DreamBackground() }
+            .confirmationDialog(
+                "Delete this dream?",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    transcriber.stop()
+                    dismiss()
+                    onDelete?()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This can't be undone.")
+            }
             .onChange(of: transcriber.transcript) { _, newValue in
                 applyTranscript(newValue)
             }
@@ -128,6 +166,63 @@ struct AddDreamView: View {
         )
         onSave(draft)
         dismiss()
+    }
+
+    // MARK: - Auto-tag
+
+    /// Auto-tagging draws from the dream description, so it needs entry text.
+    private var canAutoTag: Bool {
+        !entry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var autoTagControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: autoTag) {
+                Label {
+                    Text(analyzer.isSuggestingTags ? "Generating tags…" : "Auto-tag with AI")
+                } icon: {
+                    if analyzer.isSuggestingTags {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "sparkles")
+                    }
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(canAutoTag ? Color.dreamPrimary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canAutoTag || analyzer.isSuggestingTags)
+
+            if let error = analyzer.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func autoTag() {
+        Task {
+            guard let suggested = await analyzer.suggestTags(
+                title: title,
+                entry: entry,
+                mood: mood.rawValue
+            ) else { return }
+            mergeTags(suggested)
+        }
+    }
+
+    /// Append AI tags to whatever the user already typed, skipping duplicates.
+    private func mergeTags(_ suggested: [String]) {
+        var tags = tagText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let existing = Set(tags.map { $0.lowercased() })
+        for tag in suggested where !existing.contains(tag.lowercased()) {
+            tags.append(tag)
+        }
+        tagText = tags.joined(separator: ", ")
     }
 
     // MARK: - Dictation

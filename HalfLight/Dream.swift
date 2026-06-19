@@ -23,6 +23,13 @@ final class Dream {
     /// AI-generated themes/symbols extracted from the dream.
     var tags: [String]
 
+    // MARK: AI analysis (populated by the "Analyze with AI" action)
+
+    /// AI-assigned category for the dream (e.g. "Nightmare", "Symbolic"); `nil` until analyzed.
+    var aiCategory: String?
+    /// AI-generated interpretation of what the dream may mean; `nil` until analyzed.
+    var aiMeaning: String?
+
     // MARK: Sync scaffolding (unused until Supabase is wired up)
 
     /// The Supabase row id once this dream has been uploaded; `nil` while local-only.
@@ -41,6 +48,8 @@ final class Dream {
         date: Date,
         mood: Mood,
         tags: [String] = [],
+        aiCategory: String? = nil,
+        aiMeaning: String? = nil,
         remoteID: UUID? = nil,
         userID: String? = nil,
         updatedAt: Date = .now,
@@ -52,6 +61,8 @@ final class Dream {
         self.date = date
         self.mood = mood
         self.tags = tags
+        self.aiCategory = aiCategory
+        self.aiMeaning = aiMeaning
         self.remoteID = remoteID
         self.userID = userID
         self.updatedAt = updatedAt

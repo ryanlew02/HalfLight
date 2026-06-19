@@ -77,6 +77,7 @@ struct DreamJournalView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
     }
 
     // MARK: - Empty state

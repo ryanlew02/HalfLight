@@ -34,6 +34,7 @@ struct StatsView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 20)
             }
+            .tabBarClearance()
             .background { DreamBackground() }
             .toolbar(.hidden, for: .navigationBar)
         }
