@@ -25,6 +25,9 @@ struct HomeView: View {
     @State private var showSkippedMessage = false
     /// The dream picked by "Revisit a random dream"; setting it pushes the detail view.
     @State private var randomDream: Dream?
+    /// Set right after a new dream is saved; pushes its detail view so the user
+    /// can immediately analyze it with AI.
+    @State private var newDream: Dream?
     /// Presents the account sheet from the "Create an account" tip.
     @State private var showAuth = false
 
@@ -56,12 +59,15 @@ struct HomeView: View {
             .navigationDestination(item: $randomDream) { dream in
                 DreamDetailView(dream: dream)
             }
+            .navigationDestination(item: $newDream) { dream in
+                DreamDetailView(dream: dream)
+            }
             .sheet(isPresented: $showAuth) {
                 AuthView()
             }
             .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
-                    store.add(draft)
+                    newDream = store.add(draft)
                 }
             }
         }

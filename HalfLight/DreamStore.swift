@@ -63,8 +63,10 @@ final class DreamStore {
         skippedDays = DayLog.skipped.days()
     }
 
-    /// Create and persist a new dream from the form draft.
-    func add(_ draft: DreamDraft) {
+    /// Create and persist a new dream from the form draft, returning it so the
+    /// caller can navigate straight to its detail view.
+    @discardableResult
+    func add(_ draft: DreamDraft) -> Dream {
         let dream = Dream(
             title: draft.title,
             entry: draft.entry,
@@ -75,6 +77,7 @@ final class DreamStore {
         context.insert(dream)
         save()
         pushRemote(dream)
+        return dream
     }
 
     /// Apply edited values to an existing dream.

@@ -12,6 +12,9 @@ struct DreamJournalView: View {
     @Query(sort: \Dream.date, order: .reverse) private var dreams: [Dream]
     @Environment(DreamStore.self) private var store
     @State private var isAddingDream = false
+    /// Set right after a new dream is saved; pushes its detail view so the user
+    /// can immediately analyze it with AI.
+    @State private var newDream: Dream?
 
     var body: some View {
         NavigationStack {
@@ -31,9 +34,12 @@ struct DreamJournalView: View {
             }
             .background { DreamBackground() }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $newDream) { dream in
+                DreamDetailView(dream: dream)
+            }
             .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
-                    store.add(draft)
+                    newDream = store.add(draft)
                 }
             }
         }

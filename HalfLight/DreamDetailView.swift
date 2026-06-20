@@ -15,7 +15,6 @@ struct DreamDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isEditing = false
     @State private var analyzer = DreamAnalyzer()
-    @State private var showDeleteConfirm = false
 
     var body: some View {
         ScrollView {
@@ -32,8 +31,6 @@ struct DreamDetailView: View {
                 }
 
                 aiSection
-
-                deleteButton
             }
             .padding(20)
         }
@@ -56,30 +53,6 @@ struct DreamDetailView: View {
                 store.delete(dream)
             }
         }
-        .confirmationDialog(
-            "Delete this dream?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                dismiss()
-                store.delete(dream)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This can't be undone.")
-        }
-    }
-
-    private var deleteButton: some View {
-        Button(role: .destructive) {
-            showDeleteConfirm = true
-        } label: {
-            Label("Delete Dream", systemImage: "trash")
-                .font(.dreamBody(15, .semibold))
-                .frame(maxWidth: .infinity)
-        }
-        .padding(.top, 8)
     }
 
     // MARK: - Header

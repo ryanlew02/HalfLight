@@ -80,6 +80,14 @@ extension Dream {
         case anxious = "Anxious"
         case vivid = "Vivid"
         case nightmare = "Nightmare"
+        case romantic = "Romantic"
+        case sad = "Sad"
+        case exciting = "Exciting"
+        case mysterious = "Mysterious"
+        case lonely = "Lonely"
+        case hopeful = "Hopeful"
+        case nostalgic = "Nostalgic"
+        case euphoric = "Euphoric"
 
         var id: String { rawValue }
 
@@ -91,6 +99,14 @@ extension Dream {
             case .anxious: "wind"
             case .vivid: "wand.and.stars"
             case .nightmare: "cloud.bolt.rain.fill"
+            case .romantic: "heart.fill"
+            case .sad: "cloud.rain.fill"
+            case .exciting: "bolt.fill"
+            case .mysterious: "moon.fill"
+            case .lonely: "cloud.fog.fill"
+            case .hopeful: "sunrise.fill"
+            case .nostalgic: "hourglass"
+            case .euphoric: "star.fill"
             }
         }
     }

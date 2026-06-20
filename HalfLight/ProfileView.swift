@@ -78,8 +78,8 @@ struct ProfileView: View {
                     .font(.dreamSectionHeader)
             }
 
-            if topThemes.isEmpty {
-                Text("Journal dreams to see your top themes.")
+            if dreams.isEmpty {
+                Text("Record a dream to see themes.")
                     .font(.dreamBodyText)
                     .foregroundStyle(.secondary)
             } else {
