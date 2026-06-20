@@ -78,8 +78,10 @@ struct ProfileView: View {
                     .font(.dreamSectionHeader)
             }
 
-            if dreams.isEmpty {
-                Text("Record a dream to see themes.")
+            if topThemes.isEmpty {
+                Text(dreams.isEmpty
+                     ? "Record a dream to see themes."
+                     : "Analyze your dreams with AI to surface their themes.")
                     .font(.dreamBodyText)
                     .foregroundStyle(.secondary)
             } else {
@@ -173,14 +175,14 @@ struct ProfileView: View {
     }
 }
 
-/// Tags across the given dreams, deduped case-insensitively and counted once per
-/// dream, ranked by frequency (ties broken alphabetically). Used by both the
-/// Profile top-5 list and the full list.
+/// The AI-surfaced themes across the given dreams, deduped case-insensitively and
+/// counted once per dream, ranked by frequency (ties broken alphabetically). Used
+/// by both the Profile top-5 list and the full list.
 func rankedDreamThemes(from dreams: [Dream]) -> [(name: String, count: Int)] {
     var counts: [String: (name: String, count: Int)] = [:]
     for dream in dreams {
         var seen = Set<String>()
-        for raw in dream.tags {
+        for raw in dream.aiThemes {
             let tag = raw.trimmingCharacters(in: .whitespaces)
             let key = tag.lowercased()
             guard !tag.isEmpty, seen.insert(key).inserted else { continue }
@@ -197,7 +199,8 @@ func rankedDreamThemes(from dreams: [Dream]) -> [(name: String, count: Int)] {
                 ? $0.count > $1.count
                 : $0.name.lowercased() < $1.name.lowercased()
         }
-        .map { ($0.name, $0.count) }
+        // Normalize display casing so AI themes never render in ALL CAPS.
+        .map { ($0.name.capitalized, $0.count) }
 }
 
 /// One ranked theme row: rank badge, name, count, and a chevron.
@@ -289,7 +292,7 @@ struct ThemeDreamsView: View {
 
     private var matching: [Dream] {
         dreams.filter { dream in
-            dream.tags.contains { $0.caseInsensitiveCompare(theme) == .orderedSame }
+            dream.aiThemes.contains { $0.caseInsensitiveCompare(theme) == .orderedSame }
         }
     }
 

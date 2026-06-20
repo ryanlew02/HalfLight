@@ -30,6 +30,9 @@ final class Dream {
     var aiCategory: String?
     /// AI-generated interpretation of what the dream may mean; `nil` until analyzed.
     var aiMeaning: String?
+    /// The 2–3 central themes the AI surfaced for this dream; empty until analyzed.
+    /// These drive the "Top themes" on the Profile screen (distinct from `tags`).
+    var aiThemes: [String] = []
 
     // MARK: Supabase sync state
 
@@ -51,6 +54,7 @@ final class Dream {
         tags: [String] = [],
         aiCategory: String? = nil,
         aiMeaning: String? = nil,
+        aiThemes: [String] = [],
         remoteID: UUID? = nil,
         userID: String? = nil,
         updatedAt: Date = .now,
@@ -64,6 +68,7 @@ final class Dream {
         self.tags = tags
         self.aiCategory = aiCategory
         self.aiMeaning = aiMeaning
+        self.aiThemes = aiThemes
         self.remoteID = remoteID
         self.userID = userID
         self.updatedAt = updatedAt
@@ -124,21 +129,24 @@ extension Dream {
                 entry: "I wandered through a library where the books drifted off the shelves and rearranged themselves into staircases. Each step I climbed revealed a new memory I'd forgotten.",
                 date: .now.addingTimeInterval(-60 * 60 * 8),
                 mood: .vivid,
-                tags: ["memory", "flight", "knowledge"]
+                tags: ["memory", "flight", "knowledge"],
+                aiThemes: ["Memory", "Discovery", "Flight"]
             ),
             Dream(
                 title: "Tide of Strangers",
                 entry: "A crowd of faceless people moved like a tide along a shoreline. They were calm, and somehow I knew all of their names.",
                 date: .now.addingTimeInterval(-60 * 60 * 30),
                 mood: .strange,
-                tags: ["crowds", "ocean", "identity"]
+                tags: ["crowds", "ocean", "identity"],
+                aiThemes: ["Identity", "Belonging"]
             ),
             Dream(
                 title: "Garden After Rain",
                 entry: "I sat in my grandmother's garden just after a storm. Everything smelled green and new, and the sky was that impossible color it gets at dusk.",
                 date: .now.addingTimeInterval(-60 * 60 * 52),
                 mood: .peaceful,
-                tags: ["nostalgia", "nature", "family"]
+                tags: ["nostalgia", "nature", "family"],
+                aiThemes: ["Nostalgia", "Family", "Renewal"]
             )
         ]
     }

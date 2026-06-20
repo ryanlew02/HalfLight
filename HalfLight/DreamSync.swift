@@ -21,6 +21,8 @@ struct DreamRecord: Codable, Sendable {
     var tags: [String]
     var aiCategory: String?
     var aiMeaning: String?
+    /// Optional so rows predating the `ai_themes` column still decode.
+    var aiThemes: [String]?
     var updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -28,6 +30,7 @@ struct DreamRecord: Codable, Sendable {
         case userID = "user_id"
         case aiCategory = "ai_category"
         case aiMeaning = "ai_meaning"
+        case aiThemes = "ai_themes"
         case updatedAt = "updated_at"
     }
 }

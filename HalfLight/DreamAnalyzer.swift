@@ -14,6 +14,8 @@ import Foundation
 struct DreamAnalysis: Decodable {
     let category: String
     let meaning: String
+    /// The 2–3 central themes; optional so older deployments still decode.
+    let themes: [String]?
 }
 
 /// The structured result returned by the suggest-tags function.

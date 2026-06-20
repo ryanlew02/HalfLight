@@ -10,6 +10,7 @@ import SwiftData
 
 struct StatsView: View {
     @Environment(DreamStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @Query private var dreams: [Dream]
 
     /// The calendar year shown in the activity grid; defaults to this year.
@@ -21,29 +22,52 @@ struct StatsView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    Text("Progress")
-                        .font(.dreamTitle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    progressSection
-                    streakSection
-                    achievementsSection
-                    if dreams.isEmpty {
-                        emptyHint
-                    } else {
-                        activitySection
-                        moodSection
-                        tagSection
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        Text("Progress")
+                            .font(.dreamTitle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        progressSection
+                        bonusBanner
+                        questsSection
+                            .id(Self.questsAnchor)
+                        streakSection
+                        achievementsSection
+                        if dreams.isEmpty {
+                            emptyHint
+                        } else {
+                            activitySection
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 20)
+                .tabBarClearance()
+                .background { DreamBackground() }
+                .toolbar(.hidden, for: .navigationBar)
+                .onAppear { consumeQuestScrollIntent(proxy) }
+                .onChange(of: router.scrollToQuests) { _, _ in
+                    consumeQuestScrollIntent(proxy)
+                }
             }
-            .tabBarClearance()
-            .background { DreamBackground() }
-            .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+
+    /// Scroll anchor for the weekly-quests card, used when arriving from the Home
+    /// quest shortcut.
+    private static let questsAnchor = "quests"
+
+    /// Honor a pending "scroll to quests" request from the Home shortcut, then
+    /// clear it. Deferred a beat so the freshly-shown layout is ready to scroll.
+    private func consumeQuestScrollIntent(_ proxy: ScrollViewProxy) {
+        guard router.scrollToQuests else { return }
+        router.scrollToQuests = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeInOut) {
+                proxy.scrollTo(Self.questsAnchor, anchor: .top)
+            }
         }
     }
 
@@ -51,6 +75,10 @@ struct StatsView: View {
 
     /// The lucid count is a placeholder until lucid progress is persisted.
     @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
+
+    /// XP banked from completed weekly quests, accumulated across weeks. Folded
+    /// into `totalXP` so quests level the dreamer up like everything else.
+    @AppStorage("questBankedXP") private var questBankedXP = 0
 
     /// Distinct days that have earned journaling XP: a dream was recorded, the day
     /// was marked "can't remember", or a since-deleted dream once credited it.
@@ -68,7 +96,7 @@ struct StatsView: View {
             journaledDays: xpEarningDays.count,
             lucidSections: lucidSectionsCompleted,
             achievementXP: Achievement.unlockedXP(for: achievementStats)
-        )
+        ) + questBankedXP
     }
     private var level: Int { DreamProgression.level(forXP: totalXP) }
     private var xpIntoLevel: Int { DreamProgression.xpIntoLevel(forXP: totalXP) }
@@ -132,6 +160,139 @@ struct StatsView: View {
             Text(label)
                 .font(.dreamBody(12, .medium))
                 .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DreamMetric.lg)
+        .dreamCard()
+    }
+
+    // MARK: - Weekly quests
+
+    /// Start of the current week (Monday), shared by the stats and the XP banking.
+    private var weekStart: Date { Quest.weekStart() }
+
+    /// Dreams recorded since the start of this week.
+    private var weekDreams: [Dream] {
+        dreams.filter { $0.date >= weekStart }
+    }
+
+    /// Journaled days (recorded or "can't remember") falling in this week.
+    private var journaledDaysThisWeek: Int {
+        journaledDays.filter { $0 >= weekStart }.count
+    }
+
+    /// Metrics every active quest is measured against.
+    private var questStats: QuestStats {
+        QuestStats(
+            weekDreams: weekDreams,
+            journaledDaysThisWeek: journaledDaysThisWeek,
+            currentStreak: streak.current
+        )
+    }
+
+    /// The five quests drawn for the current week.
+    private var weeklyQuests: [Quest] { Quest.weekly() }
+
+    /// Claim a completed quest's XP: bank it and fire the reward animation.
+    private func claim(_ quest: Quest) {
+        guard QuestRewards.isClaimable(quest, stats: questStats, weekStart: weekStart) else { return }
+        questBankedXP = QuestRewards.claim(quest, weekStart: weekStart, currentTotal: questBankedXP)
+        router.presentClaim(xp: quest.xp, title: quest.title)
+    }
+
+    /// Claim the "all quests complete" bonus.
+    private func claimBonus() {
+        guard QuestRewards.isBonusClaimable(quests: weeklyQuests, stats: questStats, weekStart: weekStart) else {
+            return
+        }
+        questBankedXP = QuestRewards.claimBonus(weekStart: weekStart, currentTotal: questBankedXP)
+        router.presentClaim(xp: Quest.allCompleteBonusXP, title: "All Quests Complete!")
+    }
+
+    @ViewBuilder
+    private var bonusBanner: some View {
+        let stats = questStats
+        let quests = weeklyQuests
+        if QuestRewards.isBonusClaimable(quests: quests, stats: stats, weekStart: weekStart) {
+            Button { claimBonus() } label: {
+                HStack(spacing: DreamMetric.sm) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 16, weight: .bold))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("All quests complete!")
+                            .font(.dreamBody(14, .bold))
+                        Text("Claim your bonus")
+                            .font(.dreamBody(11))
+                            .foregroundStyle(Color.white.opacity(0.85))
+                    }
+                    Spacer(minLength: 8)
+                    Text("+\(Quest.allCompleteBonusXP) XP")
+                        .font(.dreamBody(14, .bold))
+                }
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, DreamMetric.md)
+                .padding(.vertical, DreamMetric.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    LinearGradient(
+                        colors: [Color.dreamPrimary, Color.dreamAccent],
+                        startPoint: .leading, endPoint: .trailing
+                    ),
+                    in: .rect(cornerRadius: DreamMetric.controlRadius)
+                )
+                .shadow(color: Color.dreamPrimary.opacity(0.4), radius: 10, y: 4)
+            }
+            .buttonStyle(.plain)
+        } else if QuestRewards.isBonusClaimed(weekStart: weekStart) {
+            HStack(spacing: DreamMetric.sm) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 14, weight: .bold))
+                Text("All quests complete — bonus claimed")
+                    .font(.dreamBody(12, .semibold))
+                Spacer()
+            }
+            .foregroundStyle(Color.dreamPrimary)
+            .padding(.horizontal, DreamMetric.md)
+            .padding(.vertical, DreamMetric.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.dreamPrimary.opacity(0.12), in: .rect(cornerRadius: DreamMetric.controlRadius))
+        }
+    }
+
+    private var questsSection: some View {
+        let stats = questStats
+        let quests = weeklyQuests
+        let claimedCount = quests.filter { QuestRewards.isClaimed($0, weekStart: weekStart) }.count
+
+        return VStack(alignment: .leading, spacing: DreamMetric.md) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Weekly Quests")
+                    .font(.dreamDisplay(18, .bold))
+                Spacer()
+                Text(Quest.resetText)
+                    .font(.dreamBody(12, .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("\(claimedCount) of \(quests.count) claimed")
+                .font(.dreamBody(12))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: DreamMetric.md) {
+                ForEach(Array(quests.enumerated()), id: \.element.id) { index, quest in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(Color.dreamText.opacity(0.08))
+                            .frame(height: 1)
+                    }
+                    QuestRow(
+                        quest: quest,
+                        stats: stats,
+                        claimed: QuestRewards.isClaimed(quest, weekStart: weekStart),
+                        onClaim: { claim(quest) }
+                    )
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(DreamMetric.lg)
@@ -227,7 +388,7 @@ struct StatsView: View {
     }
 
     private var emptyHint: some View {
-        Text("Record a few dreams to unlock your activity, moods, and themes.")
+        Text("Record a few dreams to unlock your activity.")
             .font(.dreamBodyText)
             .foregroundStyle(.secondary)
             .dreamBodyLineSpacing()
@@ -323,58 +484,6 @@ struct StatsView: View {
             }
     }
 
-    // MARK: - Moods
-
-    private var moodSection: some View {
-        VStack(alignment: .leading, spacing: DreamMetric.md) {
-            Text("Moods")
-                .font(.dreamSectionHeader)
-            ForEach(moodCounts, id: \.mood) { item in
-                HStack(spacing: DreamMetric.md) {
-                    Label(item.mood.rawValue, systemImage: item.mood.symbol)
-                        .font(.dreamBody(14, .medium))
-                        .foregroundStyle(item.mood.tint)
-                        .frame(width: 130, alignment: .leading)
-
-                    GeometryReader { geo in
-                        Capsule()
-                            .fill(item.mood.tint.opacity(0.3))
-                            .frame(width: barWidth(for: item.count, in: geo.size.width))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(height: 14)
-
-                    Text("\(item.count)")
-                        .font(.dreamCaption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, alignment: .trailing)
-                }
-            }
-        }
-    }
-
-    // MARK: - Tags
-
-    @ViewBuilder
-    private var tagSection: some View {
-        if !topTags.isEmpty {
-            VStack(alignment: .leading, spacing: DreamMetric.md) {
-                Text("Top themes")
-                    .font(.dreamSectionHeader)
-                ForEach(topTags, id: \.tag) { item in
-                    HStack {
-                        Text(item.tag)
-                            .font(.dreamBody(15, .medium))
-                        Spacer()
-                        Text("\(item.count)")
-                            .font(.dreamCaption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - Computed data
 
     /// Calendar days that count as journaled: a dream was recorded, or the user
@@ -432,28 +541,6 @@ struct StatsView: View {
 
         return stride(from: 0, to: days.count, by: 7).map { Array(days[$0..<$0 + 7]) }
     }
-
-    private var moodCounts: [(mood: Dream.Mood, count: Int)] {
-        Dream.Mood.allCases.map { mood in
-            (mood, dreams.filter { $0.mood == mood }.count)
-        }
-    }
-
-    private var topTags: [(tag: String, count: Int)] {
-        let counts = Dictionary(grouping: dreams.flatMap(\.tags), by: { $0 })
-            .mapValues(\.count)
-        return counts
-            .sorted { $0.value > $1.value }
-            .prefix(8)
-            .map { (tag: $0.key, count: $0.value) }
-    }
-
-    private func barWidth(for count: Int, in fullWidth: CGFloat) -> CGFloat {
-        let maxCount = moodCounts.map(\.count).max() ?? 0
-        guard maxCount > 0, count > 0 else { return 0 }
-        let fraction = CGFloat(count) / CGFloat(maxCount)
-        return max(8, fullWidth * fraction)
-    }
 }
 
 /// A level-style progress bar split into equal segments by notches, e.g.
@@ -499,11 +586,13 @@ private struct SegmentedProgressBar: View {
     StatsView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AppRouter())
 }
 
 #Preview("Dark") {
     StatsView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AppRouter())
         .preferredColorScheme(.dark)
 }

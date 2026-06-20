@@ -51,6 +51,17 @@ struct SettingsView: View {
                 }
             }
             .listRowBackground(Color.dreamSurface)
+
+            Section {
+                if let supportURL = URL(string: "mailto:support@thelanternhours.com") {
+                    Link(destination: supportURL) {
+                        SettingRow(title: "Support", systemImage: "envelope", value: nil)
+                    }
+                }
+            } footer: {
+                Text("Questions or feedback? Reach us at support@thelanternhours.com.")
+            }
+            .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
         .background { DreamBackground() }
@@ -89,9 +100,21 @@ struct NameSettingsView: View {
     var body: some View {
         Form {
             Section {
-                TextField("Your name", text: $draft)
-                    .textContentType(.givenName)
-                    .submitLabel(.done)
+                HStack {
+                    TextField("Your name", text: $draft)
+                        .textContentType(.givenName)
+                        .submitLabel(.done)
+                    if !draft.isEmpty {
+                        Button {
+                            draft = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear name")
+                    }
+                }
             } footer: {
                 Text("This is how HalfLight greets you on the Home screen.")
             }

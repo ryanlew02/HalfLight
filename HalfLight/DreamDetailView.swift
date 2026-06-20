@@ -102,6 +102,29 @@ struct DreamDetailView: View {
                     .foregroundStyle(.secondary)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if !dream.aiThemes.isEmpty {
+                    VStack(alignment: .leading, spacing: DreamMetric.sm) {
+                        Text("Themes")
+                            .font(.dreamBody(13, .semibold))
+                            .foregroundStyle(.secondary)
+                        // AI themes stay on a single line; scroll horizontally to
+                        // see any that don't fit.
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(dream.aiThemes, id: \.self) { theme in
+                                    Text(theme.capitalized)
+                                        .font(.dreamBody(12, .semibold))
+                                        .padding(.horizontal, DreamMetric.md)
+                                        .padding(.vertical, DreamMetric.xs + 2)
+                                        .background(Color.dreamPrimary.opacity(0.18), in: .capsule)
+                                        .foregroundStyle(Color.dreamPrimary)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, DreamMetric.xs)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DreamMetric.xl)
@@ -139,7 +162,12 @@ struct DreamDetailView: View {
                 entry: dream.entry,
                 mood: dream.mood.rawValue
             ) else { return }
-            store.setAnalysis(dream, category: result.category, meaning: result.meaning)
+            store.setAnalysis(
+                dream,
+                category: result.category,
+                meaning: result.meaning,
+                themes: result.themes ?? []
+            )
         }
     }
 
@@ -147,27 +175,21 @@ struct DreamDetailView: View {
 
     private var tagCloud: some View {
         VStack(alignment: .leading, spacing: DreamMetric.sm) {
-            Text("Themes")
+            Text("Tags")
                 .font(.dreamSectionHeader)
             FlowTags(tags: dream.tags, tint: dream.mood.tint)
         }
     }
 }
 
-/// A simple wrapping row of tag chips.
+/// A wrapping row of tag chips: chips that don't fit flow onto the next line
+/// rather than scrolling horizontally.
 private struct FlowTags: View {
     let tags: [String]
     let tint: Color
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            chips
-            ScrollView(.horizontal, showsIndicators: false) { chips }
-        }
-    }
-
-    private var chips: some View {
-        HStack(spacing: 8) {
+        FlowLayout(spacing: 8, lineSpacing: 8) {
             ForEach(tags, id: \.self) { tag in
                 Text(tag)
                     .font(.dreamBody(12, .semibold))
@@ -176,6 +198,53 @@ private struct FlowTags: View {
                     .background(tint.opacity(0.18), in: .capsule)
                     .foregroundStyle(tint)
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A left-to-right flow layout that wraps subviews onto new lines when they'd
+/// overflow the available width.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+
+        let width = maxWidth.isFinite ? maxWidth : x - spacing
+        return CGSize(width: max(0, width), height: y + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
         }
     }
 }

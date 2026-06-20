@@ -10,27 +10,36 @@ import SwiftUI
 import SwiftData
 
 struct MainTabView: View {
-    @State private var selection: AppTab = .home
+    @State private var router = AppRouter()
     @State private var tabBarHeight: CGFloat = 0
 
     var body: some View {
+        @Bindable var router = router
         ZStack {
             currentScreen
-                .id(selection)
+                .id(router.tab)
                 .transition(.opacity)
         }
             .foregroundStyle(Color.dreamText)
             .environment(\.tabBarHeight, tabBarHeight)
+            .environment(router)
             .safeAreaInset(edge: .bottom) {
-                CustomTabBar(selection: $selection)
+                CustomTabBar(selection: $router.tab)
                     .measuresTabBarHeight()
             }
             .onPreferenceChange(TabBarHeightPreferenceKey.self) { tabBarHeight = $0 }
+            .overlay {
+                if let reward = router.claimReward {
+                    XPClaimView(reward: reward) { router.dismissClaim() }
+                        .transition(.opacity)
+                        .zIndex(10)
+                }
+            }
     }
 
     @ViewBuilder
     private var currentScreen: some View {
-        switch selection {
+        switch router.tab {
         case .home: HomeView()
         case .lucid: LucidDreamView()
         case .journal: DreamJournalView()

@@ -54,7 +54,19 @@ struct AddDreamView: View {
         NavigationStack {
             Form {
                 Section("Title") {
-                    TextField("Give your dream a name", text: $title)
+                    HStack {
+                        TextField("Give your dream a name", text: $title)
+                        if !title.isEmpty {
+                            Button {
+                                title = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear title")
+                        }
+                    }
                 }
                 .listRowBackground(Color.dreamSurface)
 

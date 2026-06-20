@@ -92,10 +92,11 @@ final class DreamStore {
         pushRemote(dream)
     }
 
-    /// Store the AI analysis (category + meaning) returned for a dream.
-    func setAnalysis(_ dream: Dream, category: String, meaning: String) {
+    /// Store the AI analysis (category, meaning, and central themes) for a dream.
+    func setAnalysis(_ dream: Dream, category: String, meaning: String, themes: [String]) {
         dream.aiCategory = category
         dream.aiMeaning = meaning
+        dream.aiThemes = themes
         dream.updatedAt = .now
         dream.needsUpload = true
         save()
@@ -254,6 +255,7 @@ extension Dream {
             tags: tags,
             aiCategory: aiCategory,
             aiMeaning: aiMeaning,
+            aiThemes: aiThemes,
             updatedAt: updatedAt
         )
     }
@@ -271,6 +273,7 @@ extension DreamRecord {
             tags: tags,
             aiCategory: aiCategory,
             aiMeaning: aiMeaning,
+            aiThemes: aiThemes ?? [],
             remoteID: id,
             userID: userID.uuidString,
             updatedAt: updatedAt,
@@ -287,6 +290,7 @@ extension DreamRecord {
         dream.tags = tags
         dream.aiCategory = aiCategory
         dream.aiMeaning = aiMeaning
+        dream.aiThemes = aiThemes ?? []
         dream.updatedAt = updatedAt
     }
 }

@@ -51,6 +51,12 @@ struct LevelsView: View {
                 xp: DreamProgression.xpPerLucidSection
             )
             earnRow(
+                icon: "target",
+                title: "Complete weekly quests",
+                detail: "Five fresh quests every week, each worth bonus XP",
+                xp: nil
+            )
+            earnRow(
                 icon: "rosette",
                 title: "Unlock an achievement",
                 detail: "Bonus XP scaling with each tier you reach",

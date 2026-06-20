@@ -81,16 +81,6 @@ struct AuthView: View {
                 }
             }
 
-            Button("Forgot password?") {
-                auth.errorMessage = nil
-                auth.infoMessage = nil
-                showForgotPassword = true
-            }
-            .font(.dreamBody(13, .semibold))
-            .foregroundStyle(Color.dreamPrimary)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .disabled(auth.isWorking)
-
             if let error = auth.errorMessage {
                 errorBanner(error)
             }
@@ -121,6 +111,16 @@ struct AuthView: View {
             .clipShape(.rect(cornerRadius: DreamMetric.controlRadius))
 
             toggleMode
+
+            Button("Forgot password?") {
+                auth.errorMessage = nil
+                auth.infoMessage = nil
+                showForgotPassword = true
+            }
+            .font(.dreamBody(13, .semibold))
+            .foregroundStyle(Color.dreamPrimary)
+            .frame(maxWidth: .infinity)
+            .disabled(auth.isWorking)
         }
     }
 

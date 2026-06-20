@@ -66,9 +66,17 @@ struct DreamJournalView: View {
     private var library: some View {
         List {
             ForEach(dreams) { dream in
-                NavigationLink {
-                    DreamDetailView(dream: dream)
-                } label: {
+                // The NavigationLink is hidden behind the card so the List doesn't
+                // draw its trailing disclosure chevron; the whole row still taps
+                // through to the detail view.
+                ZStack {
+                    NavigationLink {
+                        DreamDetailView(dream: dream)
+                    } label: {
+                        EmptyView()
+                    }
+                    .opacity(0)
+
                     DreamCard(dream: dream)
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))

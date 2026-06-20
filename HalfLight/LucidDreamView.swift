@@ -2,107 +2,56 @@
 //  LucidDreamView.swift
 //  HalfLight
 //
-//  Lucid dreaming training presented as a Duolingo-style lesson map. The path is
-//  split into sections, one per lucid-dreaming method. Each section has its own
-//  header banner followed by a winding trail of lesson nodes. You begin in
-//  Foundations at the top and work downward, unlocking each method in turn.
+//  Lucid dreaming training as a Duolingo-style lesson map. The path is built from
+//  `LucidCurriculum` and unlocked one lesson at a time via `LucidProgress`. Each
+//  section is a header banner followed by a winding trail of lesson nodes; tapping
+//  an unlocked node opens the interactive lesson flow.
 //
 
 import SwiftUI
 
-enum LessonStatus {
-    case completed
-    case current
-    case locked
-}
-
-struct LucidLesson: Identifiable {
-    let id = UUID()
-    let title: String
-    let icon: String
-    let status: LessonStatus
-    let xp: Int
-}
-
-/// A group of lessons belonging to a single lucid-dreaming method.
-struct LucidSection: Identifiable {
-    let id = UUID()
-    let title: String
-    let subtitle: String
-    let icon: String
-    let lessons: [LucidLesson]
-}
-
 struct LucidDreamView: View {
-    // Sections are ordered top-to-bottom: you complete Foundations before the
-    // method sections unlock beneath it.
-    private let sections: [LucidSection] = [
-        LucidSection(
-            title: "Foundations",
-            subtitle: "The awareness habits every method relies on",
-            icon: "moon.stars.fill",
-            lessons: [
-                LucidLesson(title: "What Is Lucid Dreaming?", icon: "sparkles", status: .current, xp: 10),
-                LucidLesson(title: "Dream Recall Basics", icon: "book.fill", status: .locked, xp: 15),
-                LucidLesson(title: "Reality Checks", icon: "hand.raised.fill", status: .locked, xp: 15)
-            ]
-        ),
-        LucidSection(
-            title: "MILD",
-            subtitle: "Mnemonic Induction of Lucid Dreams",
-            icon: "brain.head.profile",
-            lessons: [
-                LucidLesson(title: "What MILD Means", icon: "brain.head.profile", status: .locked, xp: 20),
-                LucidLesson(title: "Setting a Lucid Intention", icon: "target", status: .locked, xp: 20),
-                LucidLesson(title: "Visualizing the Dream Moment", icon: "eye.fill", status: .locked, xp: 25)
-            ]
-        ),
-        LucidSection(
-            title: "WBTB",
-            subtitle: "Wake Back to Bed",
-            icon: "bed.double.fill",
-            lessons: [
-                LucidLesson(title: "What Is Wake Back to Bed?", icon: "bed.double.fill", status: .locked, xp: 25),
-                LucidLesson(title: "Finding the Right Wake Window", icon: "clock.fill", status: .locked, xp: 30),
-                LucidLesson(title: "Combining WBTB With MILD", icon: "link", status: .locked, xp: 35)
-            ]
-        ),
-        LucidSection(
-            title: "WILD",
-            subtitle: "Wake Initiated Lucid Dreams",
-            icon: "sparkles",
-            lessons: [
-                LucidLesson(title: "What Is WILD?", icon: "sparkles", status: .locked, xp: 35),
-                LucidLesson(title: "Staying Calm During Sleep Transition", icon: "wind", status: .locked, xp: 40),
-                LucidLesson(title: "Entering the Dream Gently", icon: "cloud.moon.fill", status: .locked, xp: 45)
-            ]
-        )
-    ]
+    private let sections = LucidCurriculum.sections
 
-    // The first section is active (glows); the rest read as locked.
-    private var activeSectionID: LucidSection.ID? {
-        sections.first?.id
-    }
+    /// Mirrors the completed-lesson count; reading it here re-renders the path the
+    /// instant a lesson is finished (the same key `LucidProgress` writes).
+    @AppStorage("lucidSectionsCompleted") private var completedCount = 0
+
+    /// The lesson currently open in the full-screen flow.
+    @State private var activeLesson: LucidLessonContent?
+
+    private var currentID: String? { LucidProgress.currentLessonID() }
 
     var body: some View {
-        NavigationStack {
+        // Reading `completedCount` here ties the path's redraw to the same key
+        // `LucidProgress.complete` writes, so finishing a lesson immediately
+        // re-evaluates every node's locked/current/completed status.
+        let _ = completedCount
+
+        return NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
+                    Text("Lucid Path")
+                        .font(.dreamTitle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+
                     ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                         LucidSectionHeader(
                             section: section,
-                            isActive: section.id == activeSectionID,
-                            // Every section but the first gets a dotted line behind
-                            // its header that continues the path up from the section above.
+                            isUnlocked: section.lessons.contains { LucidProgress.status(for: $0.id) != .locked },
+                            isActive: section.lessons.contains { $0.id == currentID },
                             showConnector: index > 0
                         )
                         .padding(.horizontal, 20)
-                        // The first section needs breathing room up top; later
-                        // sections rely on the map pad above so the header sits
-                        // centered between the nodes above and below it.
                         .padding(.top, index == 0 ? 24 : 0)
 
-                        LucidLessonMap(lessons: section.lessons)
+                        LucidLessonMap(
+                            lessons: section.lessons,
+                            status: { LucidProgress.status(for: $0.id) },
+                            onTap: open
+                        )
                     }
                 }
                 .padding(.top, 16)
@@ -110,25 +59,34 @@ struct LucidDreamView: View {
             }
             .tabBarClearance()
             .background { DreamBackground().ignoresSafeArea() }
-            .navigationTitle("Lucid Path")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .fullScreenCover(item: $activeLesson) { lesson in
+                LucidLessonView(lesson: lesson) {
+                    LucidProgress.complete(lesson.id)
+                    completedCount = LucidProgress.completedIDs().count
+                }
+            }
         }
+    }
+
+    /// Open a lesson unless it's still locked.
+    private func open(_ lesson: LucidLessonContent) {
+        guard LucidProgress.status(for: lesson.id) != .locked else { return }
+        activeLesson = lesson
     }
 }
 
 /// Method header followed by a dotted line that runs across the screen to mark
 /// the break between sections of the path.
 private struct LucidSectionHeader: View {
-    let section: LucidSection
-    /// The section you're currently on glows; everything else reads as locked.
+    let section: LucidSectionContent
+    /// The badge lights up once any lesson in the section is reachable.
+    let isUnlocked: Bool
+    /// The section you're currently working through glows.
     let isActive: Bool
-    /// Draws the vertical dotted connector behind the header, bridging the path
-    /// from the section above. Off for the very first section.
     var showConnector: Bool = false
 
     @State private var glow = false
-
-    private var isUnlocked: Bool { isActive }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -155,8 +113,6 @@ private struct LucidSectionHeader: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity)
-        // Opaque card sits in front of the connector, hiding the line where it
-        // crosses the header so it reads as passing behind the card.
         .background {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(Color.dreamSurface)
@@ -164,9 +120,6 @@ private struct LucidSectionHeader: View {
         }
         .background {
             if showConnector {
-                // Negative vertical padding stretches the line past the card so it
-                // reaches the node above (top stops at its bottom edge, ~34pt up,
-                // since that node draws in front) and the first node below (70pt).
                 VerticalLine()
                     .stroke(
                         Color.dreamText.opacity(0.12),
@@ -190,9 +143,7 @@ private struct LucidSectionHeader: View {
         return Color.dreamPrimary.opacity(glow ? 0.85 : 0.4)
     }
 
-    private var shadowRadius: CGFloat {
-        glow ? 16 : 8
-    }
+    private var shadowRadius: CGFloat { glow ? 16 : 8 }
 
     private var badgeFill: AnyShapeStyle {
         isUnlocked
@@ -218,7 +169,9 @@ private struct VerticalLine: Shape {
 /// The winding path of lesson nodes for one section, laid out in a fixed-height
 /// canvas so the connecting trail can be drawn between exact node centers.
 private struct LucidLessonMap: View {
-    let lessons: [LucidLesson]
+    let lessons: [LucidLessonContent]
+    let status: (LucidLessonContent) -> LucidLessonStatus
+    let onTap: (LucidLessonContent) -> Void
 
     private let vSpacing: CGFloat = 132
     private let amplitude: CGFloat = 72
@@ -241,8 +194,6 @@ private struct LucidLessonMap: View {
         GeometryReader { geo in
             let points = positions(width: geo.size.width)
             ZStack {
-                // Connecting trail, drawn segment-by-segment so completed
-                // stretches read brighter than the locked road ahead.
                 ForEach(0..<max(lessons.count - 1, 0), id: \.self) { i in
                     Path { path in
                         path.move(to: points[i])
@@ -255,9 +206,11 @@ private struct LucidLessonMap: View {
                 }
 
                 ForEach(Array(lessons.enumerated()), id: \.element.id) { index, lesson in
-                    LessonNode(lesson: lesson)
-                        .position(points[index])
-                        .id(lesson.id)
+                    LessonNode(icon: lesson.icon, status: status(lesson)) {
+                        onTap(lesson)
+                    }
+                    .position(points[index])
+                    .id(lesson.id)
                 }
             }
             .frame(width: geo.size.width, height: contentHeight)
@@ -265,77 +218,26 @@ private struct LucidLessonMap: View {
         .frame(height: contentHeight)
     }
 
-    private func trailColor(below lesson: LucidLesson) -> Color {
-        lesson.status == .completed
+    private func trailColor(below lesson: LucidLessonContent) -> Color {
+        status(lesson) == .completed
             ? Color.dreamPrimary.opacity(0.55)
             : Color.dreamText.opacity(0.12)
     }
 }
 
-/// Callout shown when a lesson node is tapped: the lesson name and its XP reward.
-private struct LessonInfoCallout: View {
-    let lesson: LucidLesson
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DreamMetric.md) {
-            Text(lesson.title)
-                .font(.dreamCardTitle)
-                .foregroundStyle(Color.dreamText)
-
-            if lesson.status == .locked {
-                Text("Complete earlier lessons to unlock")
-                    .font(.dreamCaption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button {
-                // Begin the lesson.
-            } label: {
-                HStack(spacing: DreamMetric.sm) {
-                    Text("Start")
-                        .font(.dreamDisplay(15, .bold))
-
-                    Spacer(minLength: 0)
-
-                    Text("+\(lesson.xp) XP")
-                        .font(.dreamBody(14, .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 18)
-                .frame(maxWidth: .infinity)
-                .background(
-                    Capsule().fill(LinearGradient(
-                        colors: [.dreamPrimary, .dreamAccent],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(lesson.status == .locked)
-            .opacity(lesson.status == .locked ? 0.4 : 1)
-        }
-        .padding(16)
-        .frame(maxWidth: 260, alignment: .leading)
-    }
-}
-
 private struct LessonNode: View {
-    let lesson: LucidLesson
+    let icon: String
+    let status: LucidLessonStatus
+    let onTap: () -> Void
 
     @State private var pulse = false
-    /// Tapping a node reveals a callout with the lesson name and its XP reward.
-    @State private var showInfo = false
 
-    private var size: CGFloat { lesson.status == .current ? 74 : 72 }
+    private var size: CGFloat { status == .current ? 74 : 72 }
 
     var body: some View {
-        Button {
-            showInfo = true
-        } label: {
+        Button(action: onTap) {
             ZStack {
-                if lesson.status == .current {
+                if status == .current {
                     Circle()
                         .stroke(Color.dreamPrimary.opacity(0.25), lineWidth: 4)
                         .frame(width: size + 12, height: size + 12)
@@ -348,18 +250,22 @@ private struct LessonNode: View {
                     .overlay(Circle().stroke(ringColor, lineWidth: 4))
                     .shadow(color: shadowColor, radius: 8, y: 4)
 
-                Image(systemName: lesson.status == .locked ? "lock.fill" : lesson.icon)
+                Image(systemName: status == .locked ? "lock.fill" : icon)
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(iconColor)
+
+                if status == .completed {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(.white, Color.dreamPrimary)
+                        .background(Circle().fill(Color.dreamPrimary).frame(width: 20, height: 20))
+                        .offset(x: size / 2 - 6, y: -size / 2 + 6)
+                }
             }
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $showInfo, arrowEdge: .top) {
-            LessonInfoCallout(lesson: lesson)
-                .presentationCompactAdaptation(.popover)
-        }
         .onAppear {
-            guard lesson.status == .current else { return }
+            guard status == .current else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
                 pulse = true
             }
@@ -367,7 +273,7 @@ private struct LessonNode: View {
     }
 
     private var fill: AnyShapeStyle {
-        switch lesson.status {
+        switch status {
         case .completed, .current:
             AnyShapeStyle(LinearGradient(
                 colors: [.dreamPrimary, .dreamAccent],
@@ -380,7 +286,7 @@ private struct LessonNode: View {
     }
 
     private var ringColor: Color {
-        switch lesson.status {
+        switch status {
         case .completed: Color.white.opacity(0.5)
         case .current: Color.white.opacity(0.8)
         case .locked: Color.dreamText.opacity(0.1)
@@ -388,11 +294,11 @@ private struct LessonNode: View {
     }
 
     private var iconColor: Color {
-        lesson.status == .locked ? .secondary : .white
+        status == .locked ? .secondary : .white
     }
 
     private var shadowColor: Color {
-        lesson.status == .locked
+        status == .locked
             ? .black.opacity(0.1)
             : Color.dreamPrimary.opacity(0.45)
     }

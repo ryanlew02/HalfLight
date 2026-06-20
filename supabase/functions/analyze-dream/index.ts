@@ -1,7 +1,8 @@
 // analyze-dream — Supabase Edge Function
 //
 // Receives { title, entry, mood } from the app, asks Claude to categorize and
-// interpret the dream, and returns structured { category, meaning } JSON.
+// interpret the dream, and returns structured { category, meaning, themes } JSON
+// (themes = the 2–3 most central themes, used as the dreamer's profile themes).
 // The Anthropic API key lives here (server-side), never in the app.
 //
 // One-time setup:
@@ -72,7 +73,10 @@ Deno.serve(async (req) => {
         "single best-fitting category and write a short interpretation of what it " +
         "may mean for the dreamer. Be specific to the dream's actual content; avoid " +
         "generic platitudes. Keep the meaning to 2–4 sentences and address the " +
-        "dreamer directly as 'you'.",
+        "dreamer directly as 'you'. Also identify the 2 to 3 most central themes of " +
+        "the dream — each a short noun phrase of one or two words in Title Case " +
+        "(e.g. 'Flight', 'Lost Identity', 'Family'), never in all-caps, naming a " +
+        "recurring motif a dreamer would track over time.",
       messages: [
         {
           role: "user",
@@ -91,8 +95,12 @@ Deno.serve(async (req) => {
             properties: {
               category: { type: "string", enum: CATEGORIES },
               meaning: { type: "string" },
+              themes: {
+                type: "array",
+                items: { type: "string" },
+              },
             },
-            required: ["category", "meaning"],
+            required: ["category", "meaning", "themes"],
             additionalProperties: false,
           },
         },
@@ -105,12 +113,22 @@ Deno.serve(async (req) => {
     const parsed = JSON.parse(textBlock?.text ?? "{}") as {
       category?: string;
       meaning?: string;
+      themes?: string[];
     };
 
     if (!parsed.category || !parsed.meaning) {
       return json({ error: "Empty analysis" }, 502);
     }
-    return json({ category: parsed.category, meaning: parsed.meaning }, 200);
+
+    const themes = (parsed.themes ?? [])
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0)
+      .slice(0, 3);
+
+    return json(
+      { category: parsed.category, meaning: parsed.meaning, themes },
+      200,
+    );
   } catch (err) {
     console.error("analyze-dream failed:", err);
     return json({ error: "Analysis failed" }, 502);

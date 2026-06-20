@@ -14,11 +14,15 @@ import SwiftData
 struct HomeView: View {
     @Environment(DreamStore.self) private var store
     @Environment(AuthService.self) private var auth
+    @Environment(AppRouter.self) private var router
     @Query(sort: \Dream.date, order: .reverse) private var dreams: [Dream]
 
     @AppStorage("userName") private var userName = "Dreamer"
     /// The day (start-of-day, as a time interval) the user last tapped "I'm not sure".
     @AppStorage("dreamPromptSkippedDay") private var skippedDay: Double = 0
+    /// XP banked from completed weekly quests; updated here so progress still counts
+    /// when the dreamer only visits Home.
+    @AppStorage("questBankedXP") private var questBankedXP = 0
     @State private var isAddingDream = false
     /// Brief "come back tomorrow" confirmation after tapping "couldn't remember".
     @State private var showSkippedMessage = false
@@ -48,6 +52,7 @@ struct HomeView: View {
                     } else {
                         latestSection
                         statsRow
+                        questPreview
                         weekTracker
                         if dreams.count >= 2 {
                             randomDreamTile
@@ -250,7 +255,7 @@ struct HomeView: View {
                 .font(.dreamSerif(29))
                 .foregroundStyle(Color.dreamText)
                 .lineLimit(2)
-                .padding(.trailing, 84)
+                .padding(.trailing, 96)
 
             Text(dream.entry)
                 .font(.dreamGrotesk(14))
@@ -303,9 +308,9 @@ struct HomeView: View {
                 .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
         )
         .overlay(alignment: .topTrailing) {
-            MoodOrb(tint: dream.mood.tint, diameter: 92)
-                .padding(.top, 10)
-                .padding(.trailing, 14)
+            MoodOrb(tint: dream.mood.tint, diameter: 72)
+                .padding(.top, 12)
+                .padding(.trailing, 16)
         }
         .clipShape(RoundedRectangle(cornerRadius: DreamMetric.heroRadius))
         .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 6)
@@ -333,6 +338,7 @@ struct HomeView: View {
                 .padding(.horizontal, 18)
             statBlock(value: "\(dreams.count)", label: "Dreams logged", color: .dreamText)
         }
+        .padding(.horizontal, 22)
     }
 
     private func statBlock(value: String, label: String, color: Color, flameLit: Bool? = nil) -> some View {
@@ -407,6 +413,147 @@ struct HomeView: View {
             RoundedRectangle(cornerRadius: DreamMetric.tileRadius)
                 .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
         )
+    }
+
+    // MARK: - Weekly quest preview
+
+    /// The week's quests plus the stats they're measured against.
+    private var weekQuests: (quests: [Quest], stats: QuestStats) {
+        Quest.currentWeek(dreams: dreams, journaledDays: journaledDays)
+    }
+
+    /// A completed quest waiting to be claimed takes priority and shows a Claim
+    /// card; otherwise the quest nearest completion links to the full list. Hidden
+    /// when there's nothing to claim and nothing left in progress.
+    @ViewBuilder
+    private var questPreview: some View {
+        let week = weekQuests
+        if let quest = week.quests.first(where: {
+            QuestRewards.isClaimable($0, stats: week.stats, weekStart: Quest.weekStart())
+        }) {
+            Button {
+                claim(quest)
+            } label: {
+                claimableCard(quest)
+            }
+            .buttonStyle(PressableTileStyle())
+        } else if let quest = Quest.closestIncomplete(in: week.quests, stats: week.stats) {
+            Button {
+                router.showQuests()
+            } label: {
+                questCard(quest, stats: week.stats)
+            }
+            .buttonStyle(PressableTileStyle())
+        }
+    }
+
+    private func claimableCard(_ quest: Quest) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(quest.tint.opacity(0.9))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "gift.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.white)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Eyebrow("Quest complete", color: quest.tint, size: 9.5, tracking: 1.4)
+                Text(quest.title)
+                    .font(.dreamGrotesk(15, .semibold))
+                    .foregroundStyle(Color.dreamText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Text("Claim +\(quest.xp)")
+                .font(.dreamGrotesk(13, .bold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(
+                    LinearGradient(
+                        colors: [quest.tint, quest.tint.opacity(0.75)],
+                        startPoint: .leading, endPoint: .trailing
+                    ),
+                    in: .capsule
+                )
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.tileRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: DreamMetric.tileRadius)
+                .strokeBorder(quest.tint.opacity(0.45), lineWidth: 1)
+        )
+        .shadow(color: quest.tint.opacity(0.25), radius: 10, y: 4)
+    }
+
+    private func questCard(_ quest: Quest, stats: QuestStats) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(quest.tint.opacity(0.14))
+                    .frame(width: 40, height: 40)
+                Image(systemName: quest.symbol)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(quest.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Eyebrow("Weekly quest", size: 9.5, tracking: 1.4)
+                    Spacer()
+                    Text("+\(quest.xp) XP")
+                        .font(.dreamMono(10, .semibold))
+                        .foregroundStyle(quest.tint)
+                }
+                Text(quest.title)
+                    .font(.dreamGrotesk(15, .semibold))
+                    .foregroundStyle(Color.dreamText)
+                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.dreamText.opacity(0.1))
+                            Capsule()
+                                .fill(quest.tint)
+                                .frame(width: max(0, geo.size.width * quest.fraction(for: stats)))
+                        }
+                    }
+                    .frame(height: 6)
+                    Text("\(quest.current(for: stats))/\(quest.goal)")
+                        .font(.dreamMono(9.5))
+                        .foregroundStyle(Color.dreamSubtle)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.dreamText.opacity(0.4))
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.tileRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: DreamMetric.tileRadius)
+                .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    /// Claim a completed quest's XP: bank it and fire the reward animation.
+    private func claim(_ quest: Quest) {
+        guard QuestRewards.isClaimable(quest, stats: weekQuests.stats, weekStart: Quest.weekStart()) else {
+            return
+        }
+        questBankedXP = QuestRewards.claim(quest, weekStart: Quest.weekStart(), currentTotal: questBankedXP)
+        router.presentClaim(xp: quest.xp, title: quest.title)
     }
 
     // MARK: - Random dream tile ("wander back")
@@ -728,6 +875,7 @@ private struct TipCard: View {
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
         .environment(AuthService())
+        .environment(AppRouter())
 }
 
 #Preview("Dark") {
@@ -735,5 +883,6 @@ private struct TipCard: View {
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
         .environment(AuthService())
+        .environment(AppRouter())
         .preferredColorScheme(.dark)
 }
