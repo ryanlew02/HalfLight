@@ -32,6 +32,26 @@ extension Color {
     /// Default text color.
     static let dreamText = Color(light: 0x3A3228, dark: 0xF4ECDD)
 
+    // MARK: Redesign tokens (editorial / celestial system)
+
+    /// Deepest base tone at the bottom of the screen gradient.
+    static let dreamBaseDeep = Color(light: 0xF3E7D3, dark: 0x100E22)
+    /// Mono eyebrow / metadata labels — warm and recessive.
+    static let dreamFaint = Color(light: 0xA89F8A, dark: 0x6C6552)
+    /// Secondary running body copy (dream excerpts, sublines).
+    static let dreamSubtle = Color(light: 0x7A7160, dark: 0xA99F8C)
+    /// The greeting's italic name accent (lavender in light, terracotta in dark).
+    static let dreamNameAccent = Color(light: 0x9D86C4, dark: 0xD98B6B)
+    /// Foreground used on a solid `dreamPrimary` fill.
+    static let dreamOnPrimary = Color(light: 0x3A3228, dark: 0x2E2008)
+
+    // Capture CTA / "Surprise me" pill — a high-contrast fill that inverts
+    // between modes (dark brown on light, amber on dark).
+    static let dreamCTAFill = Color(light: 0x3A3228, dark: 0xE8A95C)
+    static let dreamOnCTA = Color(light: 0xFAF3E8, dark: 0x2E2008)
+    static let dreamOnCTASub = Color(light: 0xB3A892, dark: 0x5C4519)
+    static let dreamCTAGlyph = Color(light: 0xE8A598, dark: 0x2E2008)
+
     /// Create a color from a 0xRRGGBB integer.
     init(hex: UInt32) {
         self.init(

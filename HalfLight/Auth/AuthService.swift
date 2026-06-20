@@ -300,6 +300,12 @@ final class SupabaseAuthBackend: AuthBackend {
     func signUp(email: String, password: String) async throws -> String {
         guard SupabaseConfig.isConfigured else { throw notConfigured }
         let response = try await client.auth.signUp(email: email, password: password)
+        // Supabase doesn't error on a duplicate email when confirmations are on
+        // (it avoids leaking which emails exist); instead it returns a user with
+        // an empty `identities` array. Treat that as "already registered".
+        if let identities = response.user.identities, identities.isEmpty {
+            throw AuthError.message("An account with this email already exists. Try resetting your password instead.")
+        }
         return response.user.email ?? email
     }
 
@@ -319,7 +325,13 @@ final class SupabaseAuthBackend: AuthBackend {
 
     func sendPasswordReset(email: String) async throws {
         guard SupabaseConfig.isConfigured else { throw notConfigured }
-        try await client.auth.resetPasswordForEmail(email)
+        // When a redirect is configured (and allowlisted in the dashboard), the
+        // email link returns the user to the app instead of the Site URL.
+        if let redirect = SupabaseConfig.passwordResetRedirect {
+            try await client.auth.resetPasswordForEmail(email, redirectTo: redirect)
+        } else {
+            try await client.auth.resetPasswordForEmail(email)
+        }
     }
 
     func changePassword(currentPassword: String, newPassword: String) async throws {

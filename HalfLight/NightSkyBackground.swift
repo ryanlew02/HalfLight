@@ -14,35 +14,29 @@ struct NightSkyBackground: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [.dreamBase, .dreamSurface],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            // Soft moonglow anchored to the top-trailing corner.
+            // A single top-anchored radial wash: lightest at the crown of the
+            // screen, settling to the deep base tone toward the bottom. Replaces
+            // the old top→bottom linear gradient for a more celestial fall-off.
             RadialGradient(
-                colors: [Color.dreamPrimary.opacity(scheme == .dark ? 0.22 : 0.18), .clear],
-                center: .init(x: 0.85, y: 0.08),
+                colors: [.dreamSurface, .dreamBase, .dreamBaseDeep],
+                center: .init(x: 0.5, y: -0.08),
                 startRadius: 0,
-                endRadius: 420
+                endRadius: 760
             )
 
-            // A second, cooler glow at the bottom-leading corner so the lower
-            // half carries the same atmosphere as the top instead of going flat.
+            // A soft warm glow at the very top-center, like a covered moon.
             RadialGradient(
-                colors: [Color.dreamAccent.opacity(scheme == .dark ? 0.20 : 0.16), .clear],
-                center: .init(x: 0.12, y: 0.96),
+                colors: [Color.dreamPrimary.opacity(scheme == .dark ? 0.16 : 0.16), .clear],
+                center: .init(x: 0.5, y: -0.02),
                 startRadius: 0,
-                endRadius: 440
+                endRadius: 280
             )
 
-            StarField(starCount: scheme == .dark ? 80 : 40)
-                .opacity(scheme == .dark ? 1 : 0.5)
-
-            GrainOverlay()
-                .opacity(scheme == .dark ? 0.06 : 0.035)
-                .blendMode(scheme == .dark ? .screen : .multiply)
+            // Sparse starfield — atmosphere, not data. Dark mode only; light mode
+            // stays clean with just the top wash.
+            if scheme == .dark {
+                StarField()
+            }
         }
         .ignoresSafeArea()
     }
@@ -66,19 +60,28 @@ private struct Star {
     let point: CGPoint     // normalized 0...1
     let radius: CGFloat
     let opacity: Double
+    let color: Color
 }
 
+/// A sparse scatter of tiny stars — mostly soft `dreamText`, with a couple in
+/// the warm accent tones — placed deterministically so they don't reshuffle.
 private struct StarField: View {
-    let starCount: Int
+    private let starCount = 14
 
     private var stars: [Star] {
         var rng = SeededGenerator(seed: 42)
-        return (0..<starCount).map { _ in
-            Star(
-                point: CGPoint(x: .random(in: 0...1, using: &rng),
-                               y: .random(in: 0...1, using: &rng)),
-                radius: .random(in: 0.5...1.6, using: &rng),
-                opacity: .random(in: 0.2...0.9, using: &rng)
+        // Most stars are the soft text tone; sprinkle a couple of warm accents.
+        let accentEvery = 6
+        return (0..<starCount).map { index in
+            let color: Color = index % accentEvery == 0
+                ? (index % (accentEvery * 2) == 0 ? .dreamPrimary : .dreamAccent)
+                : .dreamText
+            return Star(
+                point: CGPoint(x: .random(in: 0.04...0.96, using: &rng),
+                               y: .random(in: 0.04...0.92, using: &rng)),
+                radius: .random(in: 0.75...1.1, using: &rng),
+                opacity: .random(in: 0.28...0.5, using: &rng),
+                color: color
             )
         }
     }
@@ -94,30 +97,8 @@ private struct StarField: View {
                 )
                 context.fill(
                     Path(ellipseIn: rect),
-                    with: .color(.white.opacity(star.opacity))
+                    with: .color(star.color.opacity(star.opacity))
                 )
-            }
-        }
-    }
-}
-
-/// Fine film grain, drawn as scattered specks. Kept light for performance.
-private struct GrainOverlay: View {
-    private let speckCount = 280
-
-    private var specks: [CGPoint] {
-        var rng = SeededGenerator(seed: 7)
-        return (0..<speckCount).map { _ in
-            CGPoint(x: .random(in: 0...1, using: &rng),
-                    y: .random(in: 0...1, using: &rng))
-        }
-    }
-
-    var body: some View {
-        Canvas { context, size in
-            for p in specks {
-                let rect = CGRect(x: p.x * size.width, y: p.y * size.height, width: 1.2, height: 1.2)
-                context.fill(Path(rect), with: .color(.white))
             }
         }
     }

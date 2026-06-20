@@ -10,6 +10,13 @@ import SwiftData
 
 @main
 struct HalfLightApp: App {
+    init() {
+        // Register any bundled custom faces (Instrument Serif / Space Grotesk /
+        // JetBrains Mono). No-op until the TTFs are added to the target, at which
+        // point the type system upgrades from its system-font fallbacks.
+        DreamFonts.registerBundled()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

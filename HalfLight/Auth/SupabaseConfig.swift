@@ -22,6 +22,24 @@ enum SupabaseConfig {
         return url
     }
 
+    /// Where Supabase should send the user after they tap the password-reset
+    /// link in their email. Leave `nil` to fall back to the project's Site URL
+    /// (which defaults to http://localhost:3000 — hence reset links pointing at
+    /// localhost).
+    ///
+    /// To send users back into the app instead:
+    ///   1. Register a URL scheme in Xcode (Target → Info → URL Types), e.g.
+    ///      `halflight`.
+    ///   2. In the Supabase dashboard → Authentication → URL Configuration, add
+    ///      the same URL (e.g. `halflight://reset-password`) to **Redirect
+    ///      URLs**, and set a real **Site URL** (no longer localhost).
+    ///   3. Set this to `URL(string: "halflight://reset-password")` and handle
+    ///      the incoming link to present a "set new password" screen.
+    ///
+    /// NOTE: a `redirectTo` that isn't in the dashboard allowlist is rejected, so
+    /// only set this once steps 1–2 are done.
+    static let passwordResetRedirect: URL? = nil
+
     /// True once real values have been filled in (used to surface a clear
     /// message instead of failing cryptically while still on placeholders).
     static var isConfigured: Bool {

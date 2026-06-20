@@ -27,45 +27,57 @@ enum DreamMetric {
     static let cardRadius: CGFloat = 24
     /// Buttons, pills, inputs.
     static let controlRadius: CGFloat = 16
+
+    // Redesign radii (editorial / celestial system).
+    /// Hero card & large feature tiles.
+    static let heroRadius: CGFloat = 26
+    /// The full-width capture CTA.
+    static let ctaRadius: CGFloat = 20
+    /// Smaller inset tiles (e.g. the week tracker).
+    static let tileRadius: CGFloat = 18
+    /// Small pills / chips.
+    static let pillRadius: CGFloat = 14
 }
 
 // MARK: - Typography
 
 extension Font {
-    /// Thick, rounded display face — playful and friendly, used for titles,
-    /// section labels, dream titles, and stat numbers.
-    static func dreamDisplay(_ size: CGFloat, _ weight: Font.Weight = .heavy) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+    /// Display face — Instrument Serif. Used for titles, dream titles, greetings
+    /// and big stat numbers. The serif carries the emphasis, so `weight` only
+    /// nudges the system fallback; the bundled face is regular/italic.
+    static func dreamDisplay(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        dreamSerif(size)
     }
 
-    /// Rounded body face for supporting copy, keeping the soft tone cohesive.
+    /// Body face — Space Grotesk. Running copy, buttons, supporting text.
     static func dreamBody(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        dreamGrotesk(size, weight)
     }
 
     // MARK: Semantic type ramp
     //
-    // Named roles built on the two faces above. Prefer these over raw
-    // `dreamDisplay(_:)` / `dreamBody(_:)` sizes so the hierarchy stays
-    // consistent across screens — one place to tune, no magic numbers drifting
-    // per-view. Reach for the size-based variants only for genuine one-offs.
+    // Named roles built on the three faces. Prefer these over the raw
+    // `dreamSerif/Grotesk/Mono(_:)` helpers so the hierarchy stays consistent
+    // across screens — one place to tune, no magic numbers drifting per-view.
 
-    /// Top-of-screen page title (e.g. "Progress", "Journal"). Heavy + rounded.
-    static let dreamTitle = dreamDisplay(22)
-    /// A large hero title — greetings, dream titles in the hero card.
-    static let dreamLargeTitle = dreamDisplay(24)
-    /// Section / card header sitting above grouped content.
-    static let dreamSectionHeader = dreamDisplay(20, .bold)
-    /// A card's own title (the headline inside a surface).
-    static let dreamCardTitle = dreamDisplay(16, .bold)
-    /// A compact card title, used in dense rows.
-    static let dreamRowTitle = dreamDisplay(15, .bold)
-    /// Primary running body copy inside cards and detail screens.
-    static let dreamBodyText = dreamBody(15)
-    /// Secondary supporting copy — the line beneath a title.
-    static let dreamSubtext = dreamBody(13)
-    /// Small metadata / counts / pill labels.
-    static let dreamCaption = dreamBody(12, .semibold)
+    /// Top-of-screen page title (e.g. "Progress", "Journal"). Serif.
+    static let dreamTitle = dreamSerif(26)
+    /// A large hero title — greetings, dream titles in the hero card. Serif.
+    static let dreamLargeTitle = dreamSerif(30)
+    /// Section / card header sitting above grouped content. Serif.
+    static let dreamSectionHeader = dreamSerif(20)
+    /// A card's own title (the headline inside a surface). Serif, NOT bold.
+    static let dreamCardTitle = dreamSerif(19)
+    /// A compact card title, used in dense rows. Serif.
+    static let dreamRowTitle = dreamSerif(16)
+    /// Primary running body copy inside cards and detail screens. Grotesk.
+    static let dreamBodyText = dreamGrotesk(15)
+    /// Secondary supporting copy — the line beneath a title. Grotesk.
+    static let dreamSubtext = dreamGrotesk(13)
+    /// Small metadata / counts / pill labels. Mono.
+    static let dreamCaption = dreamMono(12, .medium)
+    /// Tiny mono eyebrow label (paired with `.dreamEyebrow()` for tracking + case).
+    static let dreamEyebrow = dreamMono(10, .medium)
 }
 
 extension View {
@@ -74,12 +86,21 @@ extension View {
     func dreamBodyLineSpacing() -> some View {
         self.lineSpacing(4)
     }
+
+    /// The signature mono eyebrow treatment: uppercased, letter-spaced, tinted.
+    /// Apply to a `Text` already set in `.dreamEyebrow` (or any mono font).
+    func dreamEyebrow(tracking: CGFloat = 1.6) -> some View {
+        self.textCase(.uppercase)
+            .tracking(tracking)
+    }
 }
 
 // MARK: - Elevated surface
 
-/// The single card treatment used across the app: filled surface, soft
-/// shadow for real depth (no hairline borders), rounded corners.
+/// The card treatment for the editorial / celestial system: a flat filled
+/// surface with a hairline inset stroke and only a whisper of ambient shadow —
+/// depth comes from the inset edge, not a drop-shadow bloom. `glow` keeps a soft
+/// colored halo available for elements that should feel lit from within.
 struct DreamSurfaceModifier: ViewModifier {
     var radius: CGFloat = DreamMetric.cardRadius
     var glow: Color? = nil
@@ -87,11 +108,12 @@ struct DreamSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(Color.dreamSurface, in: .rect(cornerRadius: radius))
-            .shadow(color: .black.opacity(0.10), radius: 18, x: 0, y: 10)
-            // A soft, very diffuse bloom — low opacity over a wide radius so it
-            // reads as ambient light bleeding into the screen rather than a
-            // tight halo hugging the card edge.
-            .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.16), radius: 55, x: 0, y: 4)
+            .overlay(
+                RoundedRectangle(cornerRadius: radius)
+                    .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 6)
+            .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.22), radius: 44, x: 0, y: 6)
     }
 }
 
@@ -105,44 +127,47 @@ extension View {
 
 // MARK: - Buttons
 
-/// Primary call to action: the one place the brand accent is allowed to shout.
+/// Primary call to action: a solid `dreamPrimary` fill with Space Grotesk label.
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.dreamDisplay(16, .bold))
-            .foregroundStyle(.white)
+            .font(.dreamGrotesk(15, .semibold))
+            .foregroundStyle(Color.dreamOnPrimary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(
-                LinearGradient(
-                    colors: [.dreamPrimary, .dreamAccent],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: .rect(cornerRadius: DreamMetric.controlRadius)
-            )
-            .shadow(color: Color.dreamPrimary.opacity(0.4), radius: 12, y: 6)
+            .padding(.vertical, 15)
+            .background(Color.dreamPrimary, in: .rect(cornerRadius: DreamMetric.controlRadius))
             .opacity(configuration.isPressed ? 0.9 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
-/// Quiet secondary action: transparent fill, soft outline, no accent color.
+/// Quiet secondary action: transparent fill, hairline outline, no accent color.
 struct GhostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.dreamDisplay(16, .bold))
+            .font(.dreamGrotesk(15, .semibold))
             .foregroundStyle(Color.dreamText.opacity(0.7))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Color.dreamText.opacity(0.05), in: .rect(cornerRadius: DreamMetric.controlRadius))
+            .padding(.vertical, 15)
+            .background(Color.dreamText.opacity(0.04), in: .rect(cornerRadius: DreamMetric.controlRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: DreamMetric.controlRadius)
-                    .stroke(Color.dreamText.opacity(0.12), lineWidth: 1.5)
+                    .strokeBorder(Color.dreamText.opacity(0.12), lineWidth: 1)
             )
             .opacity(configuration.isPressed ? 0.7 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+/// A whole-tile press affordance: subtle scale + fade, no chrome of its own.
+/// Used to make large cards (capture CTA, random-dream tile) feel tappable.
+struct PressableTileStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.92 : 1)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }

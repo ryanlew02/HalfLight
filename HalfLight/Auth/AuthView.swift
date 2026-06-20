@@ -27,6 +27,7 @@ struct AuthView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
+    @State private var showForgotPassword = false
 
     var body: some View {
         NavigationStack {
@@ -41,6 +42,9 @@ struct AuthView: View {
                 .padding(DreamMetric.screen)
             }
             .background { NightSkyBackground() }
+            .navigationDestination(isPresented: $showForgotPassword) {
+                ForgotPasswordView(email: email)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
@@ -77,15 +81,15 @@ struct AuthView: View {
                 }
             }
 
-            if mode == .signIn {
-                Button("Forgot password?") {
-                    Task { await auth.sendPasswordReset(email: email) }
-                }
-                .font(.dreamBody(13, .semibold))
-                .foregroundStyle(Color.dreamPrimary)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .disabled(auth.isWorking)
+            Button("Forgot password?") {
+                auth.errorMessage = nil
+                auth.infoMessage = nil
+                showForgotPassword = true
             }
+            .font(.dreamBody(13, .semibold))
+            .foregroundStyle(Color.dreamPrimary)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .disabled(auth.isWorking)
 
             if let error = auth.errorMessage {
                 errorBanner(error)
@@ -259,6 +263,114 @@ struct AuthView: View {
             case .signIn:
                 await auth.signIn(email: email, password: password)
             }
+        }
+    }
+}
+
+// MARK: - Forgot password
+
+/// A dedicated screen for requesting a password-reset email. Pushed from the
+/// sign-in / sign-up form; carries over whatever email was already typed.
+struct ForgotPasswordView: View {
+    @Environment(AuthService.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State var email: String
+
+    private var canSubmit: Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        return trimmed.contains("@") && trimmed.contains(".") && !auth.isWorking
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DreamMetric.xl) {
+                header
+
+                emailField
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                if let error = auth.errorMessage {
+                    banner(error, symbol: "exclamationmark.triangle.fill", tint: .red)
+                }
+                if let info = auth.infoMessage {
+                    banner(info, symbol: "checkmark.circle.fill", tint: .dreamPrimary)
+                }
+
+                Button(action: send) {
+                    if auth.isWorking {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text("Send reset link")
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!canSubmit)
+                .opacity(canSubmit ? 1 : 0.5)
+            }
+            .padding(DreamMetric.screen)
+        }
+        .background { NightSkyBackground() }
+        .navigationTitle("Reset password")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .onAppear {
+            auth.errorMessage = nil
+            auth.infoMessage = nil
+        }
+        .onDisappear {
+            // Don't let this screen's confirmation linger on the auth form.
+            auth.infoMessage = nil
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: DreamMetric.sm) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(Color.dreamPrimary)
+            Text("Forgot your password?")
+                .font(.dreamDisplay(26))
+            Text("Enter your account email and we'll send you a link to reset your password.")
+                .font(.dreamBody(15))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var emailField: some View {
+        TextField("Email", text: $email)
+            .font(.dreamBody(16))
+            .padding(.vertical, 14)
+            .padding(.horizontal, DreamMetric.lg)
+            .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.controlRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: DreamMetric.controlRadius)
+                    .stroke(Color.dreamText.opacity(0.12), lineWidth: 1)
+            )
+    }
+
+    private func banner(_ message: String, symbol: String, tint: Color) -> some View {
+        HStack(alignment: .top, spacing: DreamMetric.sm) {
+            Image(systemName: symbol)
+            Text(message)
+                .font(.dreamBody(13, .medium))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(tint)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DreamMetric.md)
+        .background(tint.opacity(0.12), in: .rect(cornerRadius: DreamMetric.controlRadius))
+    }
+
+    private func send() {
+        Task {
+            await auth.sendPasswordReset(email: email.trimmingCharacters(in: .whitespaces))
         }
     }
 }
