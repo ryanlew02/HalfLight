@@ -16,6 +16,12 @@ struct DreamDraft {
     var entry: String
     var mood: Dream.Mood
     var tags: [String]
+    /// Optional AI analysis generated in the form before saving. Carried through so
+    /// a dream can be created already-interpreted, and so editing preserves an
+    /// existing interpretation (or replaces it when re-analyzed).
+    var aiCategory: String? = nil
+    var aiMeaning: String? = nil
+    var aiThemes: [String] = []
 }
 
 /// A record that a dream was deleted, kept so a later sync can never resurrect it.
@@ -72,7 +78,10 @@ final class DreamStore {
             entry: draft.entry,
             date: .now,
             mood: draft.mood,
-            tags: draft.tags
+            tags: draft.tags,
+            aiCategory: draft.aiCategory,
+            aiMeaning: draft.aiMeaning,
+            aiThemes: draft.aiThemes
         )
         context.insert(dream)
         save()
@@ -86,6 +95,9 @@ final class DreamStore {
         dream.entry = draft.entry
         dream.mood = draft.mood
         dream.tags = draft.tags
+        dream.aiCategory = draft.aiCategory
+        dream.aiMeaning = draft.aiMeaning
+        dream.aiThemes = draft.aiThemes
         dream.updatedAt = .now
         dream.needsUpload = true
         save()

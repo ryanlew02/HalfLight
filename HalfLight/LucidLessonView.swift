@@ -20,9 +20,35 @@ struct LucidLessonView: View {
         case intro, quiz, reflection, challenge, complete
     }
 
+    /// One answer choice, with its position shuffled so the correct option isn't
+    /// always in the same slot.
+    private struct QuizChoice: Identifiable {
+        let id = UUID()
+        let text: String
+        let isCorrect: Bool
+    }
+
     @State private var step: Step = .intro
+    /// Index into `choices` of the option the dreamer tapped, or nil before answering.
     @State private var selectedAnswer: Int?
     @State private var reflectionText = ""
+    /// The quiz options in their shuffled display order. Fixed for the life of this
+    /// lesson view so the layout doesn't reshuffle mid-answer.
+    @State private var choices: [QuizChoice]
+
+    init(lesson: LucidLessonContent, onComplete: @escaping () -> Void) {
+        self.lesson = lesson
+        self.onComplete = onComplete
+        _choices = State(initialValue: Self.makeChoices(for: lesson.quiz))
+    }
+
+    /// Build the answer choices with the correct one flagged, then shuffle them so
+    /// the right answer lands in a random position.
+    private static func makeChoices(for quiz: LucidQuiz) -> [QuizChoice] {
+        quiz.options.enumerated()
+            .map { QuizChoice(text: $0.element, isCorrect: $0.offset == quiz.answer) }
+            .shuffled()
+    }
 
     private var progress: Double {
         Double(step.rawValue + 1) / Double(Step.allCases.count)
@@ -116,6 +142,33 @@ struct LucidLessonView: View {
                 .foregroundStyle(.secondary)
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if !lesson.didYouKnow.isEmpty {
+                VStack(alignment: .leading, spacing: DreamMetric.sm) {
+                    HStack(spacing: DreamMetric.sm) {
+                        Image(systemName: "sparkle.magnifyingglass")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Did you know?")
+                            .font(.dreamMono(11, .semibold))
+                            .tracking(2)
+                            .textCase(.uppercase)
+                    }
+                    .foregroundStyle(Color.dreamAccent)
+
+                    Text(lesson.didYouKnow)
+                        .font(.dreamBody(14))
+                        .foregroundStyle(Color.dreamText.opacity(0.85))
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(DreamMetric.lg)
+                .background(Color.dreamAccent.opacity(0.08), in: .rect(cornerRadius: DreamMetric.cardRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DreamMetric.cardRadius)
+                        .stroke(Color.dreamAccent.opacity(0.25), lineWidth: 1)
+                )
+            }
         }
     }
 
@@ -129,13 +182,13 @@ struct LucidLessonView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: DreamMetric.md) {
-                ForEach(Array(lesson.quiz.options.enumerated()), id: \.offset) { index, option in
-                    quizOption(index: index, text: option)
+                ForEach(Array(choices.enumerated()), id: \.element.id) { index, choice in
+                    quizOption(index: index, choice: choice)
                 }
             }
 
             if let selected = selectedAnswer {
-                let correct = selected == lesson.quiz.answer
+                let correct = choices[selected].isCorrect
                 HStack(alignment: .top, spacing: DreamMetric.sm) {
                     Image(systemName: correct ? "checkmark.circle.fill" : "info.circle.fill")
                     Text(lesson.quiz.why)
@@ -154,9 +207,9 @@ struct LucidLessonView: View {
         }
     }
 
-    private func quizOption(index: Int, text: String) -> some View {
+    private func quizOption(index: Int, choice: QuizChoice) -> some View {
         let answered = selectedAnswer != nil
-        let isAnswer = index == lesson.quiz.answer
+        let isAnswer = choice.isCorrect
         let isChosen = index == selectedAnswer
 
         // Color logic: once answered, the correct option turns green; a wrong
@@ -179,10 +232,11 @@ struct LucidLessonView: View {
 
         return Button {
             guard selectedAnswer == nil else { return }
+            SoundManager.shared.play(choice.isCorrect ? .correct : .wrong)
             withAnimation(.easeInOut(duration: 0.2)) { selectedAnswer = index }
         } label: {
             HStack(spacing: DreamMetric.md) {
-                Text(text)
+                Text(choice.text)
                     .font(.dreamBody(15, .medium))
                     .foregroundStyle(Color.dreamText)
                     .multilineTextAlignment(.leading)
@@ -349,11 +403,13 @@ struct LucidLessonView: View {
 
     private func advance() {
         if step == .complete {
+            // The reward popup that follows plays its own celebratory sound.
             onComplete()
             dismiss()
             return
         }
         guard let next = Step(rawValue: step.rawValue + 1) else { return }
+        // The primary button's style plays the tap; just advance here.
         withAnimation(.easeInOut(duration: 0.25)) { step = next }
     }
 }

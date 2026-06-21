@@ -8,11 +8,20 @@
 
 import SwiftUI
 import SwiftData
+import PhotosUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ProfileView: View {
     @Environment(AuthService.self) private var auth
     @Query private var dreams: [Dream]
     @AppStorage("userName") private var userName = "Dreamer"
+    /// The dreamer's profile photo, stored as a cropped JPEG.
+    @AppStorage("profilePhoto") private var profilePhotoData: Data?
+    @State private var photoItem: PhotosPickerItem?
+    /// The just-picked photo awaiting crop, presented in `PhotoCropView`.
+    @State private var cropItem: CropItem?
     @State private var showAuth = false
 
     var body: some View {
@@ -31,11 +40,21 @@ struct ProfileView: View {
             .sheet(isPresented: $showAuth) {
                 AuthView()
             }
+            #if canImport(UIKit)
+            .fullScreenCover(item: $cropItem) { item in
+                PhotoCropView(imageData: item.data) { cropped in
+                    profilePhotoData = cropped
+                    SoundManager.shared.play(.shimmer)
+                }
+            }
+            #endif
         }
     }
 
     private var header: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .center, spacing: DreamMetric.lg) {
+            avatar
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(userName)
                     .font(.dreamDisplay(28))
@@ -55,6 +74,93 @@ struct ProfileView: View {
             }
             .accessibilityLabel("Settings")
         }
+    }
+
+    // MARK: - Profile photo
+
+    private var avatar: some View {
+        PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+            ZStack {
+                if let profileImage {
+                    profileImage
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [.dreamPrimary, .dreamAccent],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    Text(initials)
+                        .font(.dreamSerif(26))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 72, height: 72)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.dreamText.opacity(0.1), lineWidth: 1))
+            .overlay(alignment: .bottomTrailing) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(Color.dreamPrimary, in: .circle)
+                    .overlay(Circle().stroke(Color.dreamBase, lineWidth: 2))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Change profile photo")
+        .contextMenu {
+            if let data = profilePhotoData {
+                Button {
+                    cropItem = CropItem(data: data)
+                } label: {
+                    Label("Adjust Photo", systemImage: "crop")
+                }
+                Button(role: .destructive) {
+                    profilePhotoData = nil
+                    photoItem = nil
+                } label: {
+                    Label("Remove Photo", systemImage: "trash")
+                }
+            }
+        }
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task { await prepareCrop(item) }
+        }
+    }
+
+    /// The stored profile photo as a SwiftUI `Image`, if one is set.
+    private var profileImage: Image? {
+        #if canImport(UIKit)
+        if let data = profilePhotoData, let uiImage = UIImage(data: data) {
+            return Image(uiImage: uiImage)
+        }
+        #endif
+        return nil
+    }
+
+    /// Up to two initials from the dreamer's name, for the placeholder avatar.
+    private var initials: String {
+        let parts = userName
+            .split(separator: " ")
+            .prefix(2)
+            .compactMap { $0.first.map(String.init) }
+        let joined = parts.joined().uppercased()
+        return joined.isEmpty ? "🌙" : joined
+    }
+
+    /// Load the picked photo's data and hand it to the cropper.
+    private func prepareCrop(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        #if canImport(UIKit)
+        cropItem = CropItem(data: data)
+        #else
+        // No cropper without UIKit — store as-is.
+        profilePhotoData = data
+        SoundManager.shared.play(.shimmer)
+        #endif
+        photoItem = nil
     }
 
     // MARK: - Top themes
@@ -120,28 +226,8 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var accountCard: some View {
-        if auth.isSignedIn {
-            HStack(spacing: DreamMetric.md) {
-                Image(systemName: "checkmark.icloud.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color.dreamPrimary)
-                    .frame(width: 44, height: 44)
-                    .background(Color.dreamPrimary.opacity(0.12), in: .circle)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Account active")
-                        .font(.dreamCardTitle)
-                    Text(auth.email ?? "Your dreams are backed up")
-                        .font(.dreamSubtext)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(DreamMetric.lg)
-            .dreamCard()
-        } else {
+        // Once signed in there's nothing to prompt — hide the card entirely.
+        if !auth.isSignedIn {
             Button {
                 showAuth = true
             } label: {
@@ -201,6 +287,13 @@ func rankedDreamThemes(from dreams: [Dream]) -> [(name: String, count: Int)] {
         }
         // Normalize display casing so AI themes never render in ALL CAPS.
         .map { ($0.name.capitalized, $0.count) }
+}
+
+/// A just-picked photo's raw data, awaiting crop. Identifiable so it can drive a
+/// `fullScreenCover(item:)`.
+struct CropItem: Identifiable {
+    let id = UUID()
+    let data: Data
 }
 
 /// One ranked theme row: rank badge, name, count, and a chevron.

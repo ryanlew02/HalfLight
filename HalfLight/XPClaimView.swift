@@ -43,6 +43,8 @@ struct XPClaimView: View {
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }
         .onAppear {
+            let isAchievement = reward.headline.localizedCaseInsensitiveContains("achievement")
+            SoundManager.shared.play(isAchievement ? .achievement : .reward)
             withAnimation(.spring(response: 0.55, dampingFraction: 0.55).delay(0.05)) {
                 core = true
             }
@@ -101,7 +103,7 @@ struct XPClaimView: View {
 
     private func coreReadout(for reward: ClaimReward) -> some View {
         VStack(spacing: 6) {
-            Text("Quest Complete")
+            Text(reward.headline)
                 .font(.dreamMono(12, .semibold))
                 .tracking(2.5)
                 .textCase(.uppercase)

@@ -32,16 +32,29 @@ struct CustomTabBar: View {
     }
 
     private func tabButton(_ tab: AppTab) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+        let isSelected = selection == tab
+        return Button {
+            if selection != tab {
+                SoundManager.shared.play(.tap)
+            }
+            // Gentle, low-bounce transition for a more subtle feel.
+            withAnimation(.easeInOut(duration: 0.28)) {
                 selection = tab
             }
         } label: {
             Image(systemName: tab.icon)
                 .font(.system(size: 22))
-                .foregroundStyle(selection == tab ? Color.dreamPrimary : .secondary)
-                .scaleEffect(selection == tab ? 1.1 : 1.0)
-                .symbolEffect(.bounce, value: selection == tab)
+                .foregroundStyle(isSelected ? Color.dreamPrimary : .secondary)
+                .scaleEffect(isSelected ? 1.05 : 1.0)
+                // Soft halo behind the active icon plus a colored glow on it.
+                .background {
+                    Circle()
+                        .fill(Color.dreamPrimary)
+                        .frame(width: 34, height: 34)
+                        .blur(radius: 12)
+                        .opacity(isSelected ? 0.4 : 0)
+                }
+                .shadow(color: Color.dreamPrimary.opacity(isSelected ? 0.55 : 0), radius: 6)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
         }

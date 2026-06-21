@@ -28,8 +28,6 @@ struct HomeView: View {
     @State private var showSkippedMessage = false
     /// The dream picked by "Surprise me"; setting it pushes the detail view.
     @State private var randomDream: Dream?
-    /// Set right after a new dream is saved; pushes its detail view.
-    @State private var newDream: Dream?
     /// Presents the account sheet from the "Create an account" tip.
     @State private var showAuth = false
 
@@ -71,15 +69,22 @@ struct HomeView: View {
             .navigationDestination(item: $randomDream) { dream in
                 DreamDetailView(dream: dream)
             }
-            .navigationDestination(item: $newDream) { dream in
-                DreamDetailView(dream: dream)
-            }
             .sheet(isPresented: $showAuth) {
                 AuthView()
             }
             .fullScreenCover(isPresented: $isAddingDream) {
                 AddDreamView { draft in
-                    newDream = store.add(draft)
+                    // A day earns journaling XP only once; celebrate it only when
+                    // this dream is what crosses that line for today.
+                    let earnedXP = !hasJournalXPToday
+                    store.add(draft)
+                    if earnedXP {
+                        router.presentClaim(
+                            xp: DreamProgression.xpPerJournaledDay,
+                            title: "Dream logged for today",
+                            headline: "Dream Logged"
+                        )
+                    }
                 }
             }
         }
@@ -178,6 +183,15 @@ struct HomeView: View {
         dreams.contains { Calendar.current.isDateInToday($0.date) }
     }
 
+    /// Whether today has already banked its once-per-day journaling XP — via a
+    /// recorded dream, a "can't remember" skip, or a credit left by a deleted
+    /// dream. Used to fire the reward popup only when XP is genuinely earned.
+    private var hasJournalXPToday: Bool {
+        let today = Calendar.current.startOfDay(for: .now)
+        if hasDreamToday { return true }
+        return store.skippedDays.contains(today) || store.creditedDays.contains(today)
+    }
+
     private var skippedToday: Bool {
         guard skippedDay > 0 else { return false }
         return Calendar.current.isDateInToday(Date(timeIntervalSince1970: skippedDay))
@@ -188,8 +202,17 @@ struct HomeView: View {
     /// Mark today as journaled even though no dream was recorded ("can't
     /// remember"), so the streak survives the gap.
     private func markForgotten() {
+        let earnedXP = !hasJournalXPToday
         skippedDay = Calendar.current.startOfDay(for: .now).timeIntervalSince1970
         store.recordSkippedDay()
+        if earnedXP {
+            // The button's style plays the press tap; reward popup adds its sound.
+            router.presentClaim(
+                xp: DreamProgression.xpPerJournaledDay,
+                title: "Showed up for your dreams",
+                headline: "Day Logged"
+            )
+        }
         withAnimation { showSkippedMessage = true }
         Task {
             try? await Task.sleep(for: .seconds(2))

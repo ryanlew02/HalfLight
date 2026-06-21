@@ -42,7 +42,10 @@ struct DreamDetailView: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Edit") { isEditing = true }
+                Button("Edit") {
+                    SoundManager.shared.play(.tap)
+                    isEditing = true
+                }
             }
         }
         .fullScreenCover(isPresented: $isEditing) {
@@ -156,18 +159,23 @@ struct DreamDetailView: View {
     }
 
     private func analyze() {
+        // The button's style plays the press tap; we add the result sounds below.
         Task {
             guard let result = await analyzer.analyze(
                 title: dream.title,
                 entry: dream.entry,
                 mood: dream.mood.rawValue
-            ) else { return }
+            ) else {
+                SoundManager.shared.play(.wrong)
+                return
+            }
             store.setAnalysis(
                 dream,
                 category: result.category,
                 meaning: result.meaning,
                 themes: result.themes ?? []
             )
+            SoundManager.shared.play(.shimmer)
         }
     }
 

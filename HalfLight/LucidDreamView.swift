@@ -11,6 +11,8 @@
 import SwiftUI
 
 struct LucidDreamView: View {
+    @Environment(AppRouter.self) private var router
+
     private let sections = LucidCurriculum.sections
 
     /// Mirrors the completed-lesson count; reading it here re-renders the path the
@@ -62,8 +64,17 @@ struct LucidDreamView: View {
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $activeLesson) { lesson in
                 LucidLessonView(lesson: lesson) {
-                    LucidProgress.complete(lesson.id)
+                    let isNew = LucidProgress.complete(lesson.id)
                     completedCount = LucidProgress.completedIDs().count
+                    // Celebrate only genuinely-earned XP, once the lesson sheet
+                    // has dismissed so the full-screen reward isn't covered by it.
+                    if isNew {
+                        router.presentClaim(
+                            xp: lesson.xp,
+                            title: lesson.title,
+                            headline: "Lesson Complete"
+                        )
+                    }
                 }
             }
         }

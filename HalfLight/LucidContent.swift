@@ -39,6 +39,9 @@ struct LucidLessonContent: Identifiable {
     let done: String
     /// An optional closing "dreamer tip".
     let tip: String
+    /// An optional "Did you know?" fact shown on the intro step to add depth and
+    /// grounding. Kept accurate and responsible; empty hides the card.
+    var didYouKnow: String = ""
 
     /// Every lesson grants the same XP, wired into the existing lucid economy.
     var xp: Int { DreamProgression.xpPerLucidSection }
@@ -94,7 +97,8 @@ enum LucidCurriculum {
                 reflection: "If you woke up inside a dream right now and knew it was yours — where's the first place you'd go?",
                 challenge: "Say one sentence out loud before bed: \"Tonight, I'll notice I'm dreaming.\" Belief is the first skill.",
                 done: "You've named the door most people walk past every night. It's real — and now you know it's there.",
-                tip: "Lucidity is a skill, not luck. Skills grow with reps — and you just took your first."
+                tip: "Lucidity is a skill, not luck. Skills grow with reps — and you just took your first.",
+                didYouKnow: "Lucid dreaming was first verified in a sleep lab in 1975: a dreaming volunteer signaled \"I know I'm dreaming\" using pre-agreed eye movements, while the rest of the body stayed paralyzed in REM. It's been studied seriously ever since."
             ),
             LucidLessonContent(
                 id: "foundations-2",
@@ -115,7 +119,8 @@ enum LucidCurriculum {
                 reflection: "Think of a dream you actually remember. Was it closer to bedtime, or closer to your alarm?",
                 challenge: "Notice your natural wake-up time tomorrow. That early, drowsy window is dreaming gold we'll use later.",
                 done: "You've learned the rhythm of the night. Skilled dreamers work with this tide, not against it.",
-                tip: "You don't need more sleep to lucid dream — you need awareness during the sleep you already get."
+                tip: "You don't need more sleep to lucid dream — you need awareness during the sleep you already get.",
+                didYouKnow: "Across a full night you spend roughly two hours in dreams — but because REM stretches longer with each cycle, your final cycle before waking can hold a single dream lasting close to an hour."
             ),
             LucidLessonContent(
                 id: "foundations-3",
@@ -136,7 +141,8 @@ enum LucidCurriculum {
                 reflection: "What's one small thing you can do every day this week to stay curious about your dreams?",
                 challenge: "Decide where and when you'll keep a dream journal — by your bed, on waking. Choosing the moment is half the habit.",
                 done: "Foundations complete. You understand what lucidity is, when it lives, and the mindset that unlocks it.",
-                tip: "Streaks beat effort. One calm minute a day out-trains an hour of frustration."
+                tip: "Streaks beat effort. One calm minute a day out-trains an hour of frustration.",
+                didYouKnow: "Expectation is measurable: studies find that people who simply believe they're likely to have a lucid dream tonight go on to have more of them. Your mindset isn't a side note — it's part of the technique."
             )
         ]
     )
@@ -168,7 +174,8 @@ enum LucidCurriculum {
                 reflection: "When did you last remember a dream? What was the feeling it left behind?",
                 challenge: "Tonight, as you fall asleep, repeat: \"I will remember my dreams.\" Intention primes recall.",
                 done: "You've learned the first secret: dreams aren't gone, just uncaught. Tomorrow, you start catching them.",
-                tip: "Recall is the foundation of everything. No technique works without it."
+                tip: "Recall is the foundation of everything. No technique works without it.",
+                didYouKnow: "Dreams fade fast because the brain chemistry that stores long-term memories is largely switched off during REM. The memory isn't deleted — it was barely written down in the first place, so catching it quickly is everything."
             ),
             LucidLessonContent(
                 id: "recall-2",
@@ -189,7 +196,8 @@ enum LucidCurriculum {
                 reflection: "What gets in the way of writing first thing — your phone, getting up, rushing? How could you remove it?",
                 challenge: "Log your very next dream in HalfLight the moment you wake — even if it's one word.",
                 done: "Your dream journal is open. Every entry sharpens the next morning's memory.",
-                tip: "Even \"I remember nothing\" counts — write that. It keeps the habit alive."
+                tip: "Even \"I remember nothing\" counts — write that. It keeps the habit alive.",
+                didYouKnow: "Keeping a dream journal is one of the few habits shown in research to reliably increase both how much you recall and how often you become lucid. The simple act of writing tells your brain that dreams are worth keeping."
             ),
             LucidLessonContent(
                 id: "recall-3",
@@ -210,7 +218,8 @@ enum LucidCurriculum {
                 reflection: "What's the smallest dream detail you've ever remembered? Could you have pulled more from it?",
                 challenge: "Next waking, lie still and name one detail before reaching for anything. Then write it.",
                 done: "You're learning to fish in the fog. Fragments today become full dreams tomorrow.",
-                tip: "Stay in the dream's posture — sometimes returning to how you were lying brings it back."
+                tip: "Stay in the dream's posture — sometimes returning to how you were lying brings it back.",
+                didYouKnow: "Memory works by association, so a single fragment is a real handle: re-feeling the dream's mood or picturing its one clear image often cues the surrounding scene back into view, like pulling a thread."
             ),
             LucidLessonContent(
                 id: "recall-4",
@@ -231,7 +240,8 @@ enum LucidCurriculum {
                 reflection: "What's the first thing you usually do when you wake? Is it helping or erasing your dreams?",
                 challenge: "Tomorrow, don't move for 30 seconds after waking. Just replay the night, then write.",
                 done: "You've learned the gentlest, most powerful recall trick there is: stillness.",
-                tip: "Set a calm alarm tone — jarring alarms blast dreams out of memory."
+                tip: "Set a calm alarm tone — jarring alarms blast dreams out of memory.",
+                didYouKnow: "Waking gently keeps you near the dream state long enough to copy it into memory. A jarring alarm floods you with alertness and stress hormones that scatter the dream before you can catch it."
             ),
             LucidLessonContent(
                 id: "recall-5",
@@ -252,7 +262,8 @@ enum LucidCurriculum {
                 reflection: "Looking back, what shows up again and again in your dreams?",
                 challenge: "Review your journal entries and mark one recurring dream sign to watch for.",
                 done: "Recall mastered. You're catching dreams and reading their patterns — the raw material of lucidity.",
-                tip: "When a dream sign appears in waking life too, do a reality check. That bridge is gold."
+                tip: "When a dream sign appears in waking life too, do a reality check. That bridge is gold.",
+                didYouKnow: "Dream signs are personal — one dreamer's recurring theme might be losing teeth, another's a childhood house. Cataloguing your own is one of the most powerful, individualized routes to lucidity there is."
             )
         ]
     )
@@ -284,7 +295,8 @@ enum LucidCurriculum {
                 reflection: "How often during the day do you truly question whether you're awake? (Almost never, right?)",
                 challenge: "Right now, genuinely ask: \"Am I dreaming?\" — and mean it. That's your first check.",
                 done: "You've learned the bridge between waking and dreaming. Next, we pick your tool.",
-                tip: "The question matters more than the test. Always ask it like the answer could surprise you."
+                tip: "The question matters more than the test. Always ask it like the answer could surprise you.",
+                didYouKnow: "Reality testing was popularized by lucid-dream researcher Stephen LaBerge as a way to make critical, questioning awareness so automatic that it shows up on its own inside a dream."
             ),
             LucidLessonContent(
                 id: "checks-2",
@@ -305,7 +317,8 @@ enum LucidCurriculum {
                 reflection: "Which check feels most natural to you — hands, breath, or reading?",
                 challenge: "Choose your reality check now and do it three times today.",
                 done: "You've got your tool. A simple, repeatable test you can carry everywhere.",
-                tip: "Pick checks you can do anywhere without looking odd — you'll do them more."
+                tip: "Pick checks you can do anywhere without looking odd — you'll do them more.",
+                didYouKnow: "The nose-pinch check is reliable because your real airway is irrelevant inside a dream — there's no physical block, so your dreaming mind simply lets you keep \"breathing.\" That impossible breath is the tell."
             ),
             LucidLessonContent(
                 id: "checks-3",
@@ -326,7 +339,8 @@ enum LucidCurriculum {
                 reflection: "Have you ever done something on autopilot and missed the obvious? How do you stay present?",
                 challenge: "Do one reality check today where you truly pause and expect a surprise.",
                 done: "You now check with intention, not habit-on-autopilot. That's the difference that matters.",
-                tip: "If you ever 'pass' a check oddly, look closer — that's exactly the dream moment to notice."
+                tip: "If you ever 'pass' a check oddly, look closer — that's exactly the dream moment to notice.",
+                didYouKnow: "Text and digital clocks are famously unstable in dreams: look away and back and they often change. The dreaming brain renders the gist of a scene, not its fine detail, so re-reading anything tends to reshuffle it."
             ),
             LucidLessonContent(
                 id: "checks-4",
@@ -347,7 +361,8 @@ enum LucidCurriculum {
                 reflection: "What's something you pass through or look at dozens of times a day?",
                 challenge: "Pick one anchor (say, every doorway) and reality-check each time you meet it today.",
                 done: "Your day is now dotted with triggers. The habit is starting to run on its own.",
-                tip: "Anchor to your dream signs especially — they're most likely to appear in dreams too."
+                tip: "Anchor to your dream signs especially — they're most likely to appear in dreams too.",
+                didYouKnow: "Habit research shows that behaviors tied to an existing cue — a doorway, a mirror, unlocking your phone — stick far better than ones you have to remember from scratch. You're borrowing triggers your day already has."
             ),
             LucidLessonContent(
                 id: "checks-5",
@@ -368,7 +383,8 @@ enum LucidCurriculum {
                 reflection: "Which moments in your day would make the most natural check-in points?",
                 challenge: "Do 5 genuine reality checks today, each tied to an anchor.",
                 done: "Reality Checks complete. You've built a waking habit that's quietly hunting for your dreams.",
-                tip: "Pair this with MILD next — together they're one of the strongest combinations there is."
+                tip: "Pair this with MILD next — together they're one of the strongest combinations there is.",
+                didYouKnow: "In formal studies, reality checks really shine when combined with other methods like MILD — layered habits consistently outperform any single technique used on its own."
             )
         ]
     )
@@ -400,7 +416,8 @@ enum LucidCurriculum {
                 reflection: "When have you 'remembered to remember' something at just the right moment in waking life?",
                 challenge: "Tonight, as you drift off, hold the thought: \"Next time I'm dreaming, I'll realize it.\"",
                 done: "You've met MILD — turning memory itself into a doorway to lucidity.",
-                tip: "MILD pairs perfectly with the reality-check habit you just built."
+                tip: "MILD pairs perfectly with the reality-check habit you just built.",
+                didYouKnow: "MILD was developed by Stephen LaBerge during his doctoral research at Stanford and remains one of the best-supported induction techniques in the scientific literature."
             ),
             LucidLessonContent(
                 id: "mild-2",
@@ -421,7 +438,8 @@ enum LucidCurriculum {
                 reflection: "What wording feels most natural and convincing in your own voice?",
                 challenge: "Write your personal lucid phrase and repeat it 10 times before sleep tonight.",
                 done: "You've forged your key phrase. Words you'll carry across the threshold of sleep.",
-                tip: "Keep it short enough to repeat without effort as you fade out."
+                tip: "Keep it short enough to repeat without effort as you fade out.",
+                didYouKnow: "The skill MILD trains — prospective memory, or remembering to do something later — is the same one that reminds you to grab milk on the way home. MILD just aims that everyday ability at the dream world."
             ),
             LucidLessonContent(
                 id: "mild-3",
@@ -442,7 +460,8 @@ enum LucidCurriculum {
                 reflection: "Pick a recent dream. Where in it would realizing 'I'm dreaming' have been easiest?",
                 challenge: "Tonight, replay a recent dream and imagine becoming lucid inside it.",
                 done: "You've rehearsed the moment. Your mind now knows the shape of becoming lucid.",
-                tip: "Use a real dream from your journal — familiarity makes the rehearsal vivid."
+                tip: "Use a real dream from your journal — familiarity makes the rehearsal vivid.",
+                didYouKnow: "Mental rehearsal lights up many of the same brain regions as actually doing the thing — which is why athletes visualize their routines and why imagining the moment of lucidity helps train it."
             ),
             LucidLessonContent(
                 id: "mild-4",
@@ -463,7 +482,8 @@ enum LucidCurriculum {
                 reflection: "Do you ever wake naturally in the early morning? Could you use that moment?",
                 challenge: "If you wake during the night, repeat your lucid phrase as you fall back asleep.",
                 done: "You've learned MILD's secret timing. Practice it near morning and watch it bloom.",
-                tip: "Don't lose sleep chasing it — a natural night-waking is the perfect, free opportunity."
+                tip: "Don't lose sleep chasing it — a natural night-waking is the perfect, free opportunity.",
+                didYouKnow: "A 2017 study of MILD found it worked best when practiced right after a brief awakening — and that success climbed the faster people fell back asleep afterward, ideally within five minutes."
             ),
             LucidLessonContent(
                 id: "mild-5",
@@ -484,7 +504,8 @@ enum LucidCurriculum {
                 reflection: "Which piece of your routine feels strongest right now? Which needs work?",
                 challenge: "Tonight, do all three: journal-ready, a few reality checks today, and MILD at sleep.",
                 done: "MILD complete. You can now aim your memory at the dream world — and stack the odds.",
-                tip: "Consistency over intensity. A gentle stack done nightly beats a heroic effort once."
+                tip: "Consistency over intensity. A gentle stack done nightly beats a heroic effort once.",
+                didYouKnow: "Researchers consistently find that no single induction method is reliable on its own — combining recall, reality checks, and MILD outperforms any one of them used alone. Stacking is the real technique."
             )
         ]
     )
@@ -516,7 +537,8 @@ enum LucidCurriculum {
                 reflection: "How might a short, planned wake-up fit into your sleep — without wrecking it?",
                 challenge: "Read tonight's plan: you'll set a gentle alarm for a few hours after bedtime.",
                 done: "You've met the most powerful timing trick in lucid dreaming. Now we tune it.",
-                tip: "WBTB amplifies every other technique — it's a multiplier, not a replacement."
+                tip: "WBTB amplifies every other technique — it's a multiplier, not a replacement.",
+                didYouKnow: "REM periods lengthen as the night goes on: your first might last about ten minutes, while a pre-dawn one can run close to an hour. WBTB drops you straight back into that long, dream-rich window."
             ),
             LucidLessonContent(
                 id: "wbtb-2",
@@ -537,7 +559,8 @@ enum LucidCurriculum {
                 reflection: "If you fall asleep around your usual time, what clock time is ~5 hours later?",
                 challenge: "Set a soft alarm for about 5 hours after you expect to fall asleep tonight.",
                 done: "You've found your window. Timing turns ordinary sleep into a launchpad.",
-                tip: "Adjust by 30 minutes over a few nights until you find your personal sweet spot."
+                tip: "Adjust by 30 minutes over a few nights until you find your personal sweet spot.",
+                didYouKnow: "The early-morning hours are so dense with REM that most spontaneous lucid dreams — the accidental ones people stumble into — happen close to their natural wake-up time."
             ),
             LucidLessonContent(
                 id: "wbtb-3",
@@ -558,7 +581,8 @@ enum LucidCurriculum {
                 reflection: "What calm, screen-free thing could you do during that short wake window?",
                 challenge: "Plan your wake-window activity now — reading your journal is perfect.",
                 done: "You've nailed the timing balance: awake enough to be aware, sleepy enough to return.",
-                tip: "Keep lights dim. Bright light tells your brain it's morning and kills the plan."
+                tip: "Keep lights dim. Bright light tells your brain it's morning and kills the plan.",
+                didYouKnow: "Bright light suppresses melatonin and signals your body clock that it's daytime — which is exactly why a short, dim wake window raises awareness just enough without flipping you fully into morning mode."
             ),
             LucidLessonContent(
                 id: "wbtb-4",
@@ -579,7 +603,8 @@ enum LucidCurriculum {
                 reflection: "Which part feels harder for you — the waking, or the falling back asleep with intention?",
                 challenge: "Tonight, run the full combo once: WBTB window, brief wake, then MILD back to sleep.",
                 done: "You've assembled the powerhouse method. Recall, checks, MILD, and timing — all in one night.",
-                tip: "If it doesn't work the first time, that's normal. The combo rewards patient repetition."
+                tip: "If it doesn't work the first time, that's normal. The combo rewards patient repetition.",
+                didYouKnow: "WBTB combined with MILD is widely regarded as the most effective beginner-friendly induction method in the research — the brief waking sharpens your mind right as you re-enter the night's richest REM."
             ),
             LucidLessonContent(
                 id: "wbtb-5",
@@ -600,7 +625,8 @@ enum LucidCurriculum {
                 reflection: "How do you feel after a poor night's sleep? Is it worth chasing a dream that costs that?",
                 challenge: "Pick 2–3 nights this week for WBTB — and commit to resting fully on the others.",
                 done: "WBTB complete. You can summon the dream world's best hours — responsibly.",
-                tip: "Tired? Skip it. A rested mind dreams more vividly and remembers more anyway."
+                tip: "Tired? Skip it. A rested mind dreams more vividly and remembers more anyway.",
+                didYouKnow: "Chronically fragmenting your sleep harms memory, mood, and focus — the very faculties lucid dreaming depends on. Spacing WBTB out isn't just kind to yourself; it keeps the practice working."
             )
         ]
     )
@@ -632,7 +658,8 @@ enum LucidCurriculum {
                 reflection: "How do you feel about staying aware as you fall asleep — curious, nervous, both?",
                 challenge: "Tonight, just observe how you normally fall asleep. Notice the drift, don't force it.",
                 done: "You've met the most direct path into a dream. Advanced — but unforgettable when it lands.",
-                tip: "WILD is easiest after WBTB, when your body is tired but your mind can stay alert."
+                tip: "WILD is easiest after WBTB, when your body is tired but your mind can stay alert.",
+                didYouKnow: "WILD asks you to stay conscious through the wake-to-sleep transition — a narrow doorway almost everyone passes through every single night without ever noticing it."
             ),
             LucidLessonContent(
                 id: "wild-2",
@@ -653,7 +680,8 @@ enum LucidCurriculum {
                 reflection: "Have you ever noticed images or sounds drifting in as you fall asleep?",
                 challenge: "Tonight, as you drift off, simply watch any images that appear — observe, don't grab.",
                 done: "You've learned to read the threshold's signs. The doorway has a shape now.",
-                tip: "If images vanish when you focus hard, soften your attention — watch from the corner of your mind."
+                tip: "If images vanish when you focus hard, soften your attention — watch from the corner of your mind.",
+                didYouKnow: "Hypnagogia — the drifting imagery at sleep's edge — has long fascinated creatives. Edison and Salvador Dalí famously napped holding an object so it would fall and wake them, catching ideas from that exact half-dreaming state."
             ),
             LucidLessonContent(
                 id: "wild-3",
@@ -674,7 +702,8 @@ enum LucidCurriculum {
                 reflection: "What helps you stay calm when something exciting starts to happen?",
                 challenge: "Practice 5 minutes of calm, passive breathing tonight — just watching, not reacting.",
                 done: "You've learned the WILD dreamer's superpower: staying perfectly, gently calm.",
-                tip: "Tell yourself 'whatever happens is fine.' Removing the stakes keeps you steady."
+                tip: "Tell yourself 'whatever happens is fine.' Removing the stakes keeps you steady.",
+                didYouKnow: "The threshold is fragile because excitement and fear both raise brain arousal toward waking. Calm isn't just a mood here — it's literally the brain state that keeps you sliding toward sleep instead of away from it."
             ),
             LucidLessonContent(
                 id: "wild-4",
@@ -695,7 +724,8 @@ enum LucidCurriculum {
                 reflection: "How do you usually respond to unfamiliar body sensations — tense up, or breathe through?",
                 challenge: "Learn the calm response now: if you feel it, think \"this is normal, I'm safe,\" and relax.",
                 done: "You've demystified the spookiest part of WILD. Knowledge turns fear into a green light.",
-                tip: "You can always end it by wiggling a toe or finger. Knowing that makes staying calm easy."
+                tip: "You can always end it by wiggling a toe or finger. Knowing that makes staying calm easy.",
+                didYouKnow: "Sleep paralysis is just REM atonia — your brain's normal safety switch that stops you from physically acting out dreams. Noticing it while still aware is harmless; it simply means body and mind fell asleep slightly out of sync."
             ),
             LucidLessonContent(
                 id: "wild-5",
@@ -716,7 +746,8 @@ enum LucidCurriculum {
                 reflection: "Why might 'gentle' be the hardest instruction when something amazing is forming?",
                 challenge: "Tonight, if a scene forms, imagine gently touching the ground within it.",
                 done: "WILD complete. You've learned to walk through the door of sleep with your eyes wide open.",
-                tip: "Don't be discouraged by misses — WILD often takes many tries. Each attempt teaches you the threshold."
+                tip: "Don't be discouraged by misses — WILD often takes many tries. Each attempt teaches you the threshold.",
+                didYouKnow: "Even experienced practitioners count their WILD misses — falling fully asleep or waking up is the norm, not failure. Each attempt quietly trains your familiarity with the threshold until one night it holds."
             )
         ]
     )
@@ -748,7 +779,8 @@ enum LucidCurriculum {
                 reflection: "How do you usually react to something thrilling? Could that reaction wake you?",
                 challenge: "Rehearse your reaction now: \"I'm dreaming — stay calm, stay grounded.\"",
                 done: "You've found the hidden trap. Knowing it is the first step to staying longer.",
-                tip: "The calmer you are when lucidity hits, the longer the dream lasts."
+                tip: "The calmer you are when lucidity hits, the longer the dream lasts.",
+                didYouKnow: "The \"wake-up rush\" is physiological: the jolt of realizing you're dreaming spikes brain arousal toward waking. Calming yourself literally lowers that arousal and keeps you asleep — which is why the fix feels backwards."
             ),
             LucidLessonContent(
                 id: "stable-2",
@@ -769,7 +801,8 @@ enum LucidCurriculum {
                 reflection: "Which sense do you notice most vividly in your dreams — sight, touch, sound?",
                 challenge: "Practice rubbing your hands together now, and plan to do it the moment you go lucid.",
                 done: "You've got an anchor for any wobbling dream. Touch it, and it holds.",
-                tip: "Rubbing hands is the dreamer's classic for a reason — it works fast and anywhere."
+                tip: "Rubbing hands is the dreamer's classic for a reason — it works fast and anywhere.",
+                didYouKnow: "Engaging dream touch and detail seems to recruit your sensory brain areas and pull attention into the dream — giving the fading scene something concrete to hold onto instead of slipping toward waking."
             ),
             LucidLessonContent(
                 id: "stable-3",
@@ -790,7 +823,8 @@ enum LucidCurriculum {
                 reflection: "When something is slipping away, does motion or stillness usually refocus you?",
                 challenge: "Memorize the move: if a dream fades, spin. Picture doing it before sleep tonight.",
                 done: "You've got a rescue move. A fading dream no longer means game over.",
-                tip: "Expect the dream to continue as you spin — your expectation shapes what you find."
+                tip: "Expect the dream to continue as you spin — your expectation shapes what you find.",
+                didYouKnow: "Spinning is a long-standing dreamer's trick: the flood of motion gives your senses something vivid to process, often reviving a collapsing dream — and because the old scene dissolves, you sometimes land somewhere entirely new."
             ),
             LucidLessonContent(
                 id: "stable-4",
@@ -811,14 +845,15 @@ enum LucidCurriculum {
                 reflection: "What calms you fastest in waking life? Could you bring it into a dream?",
                 challenge: "Do one minute of slow breathing tonight as a rehearsal for staying calm in-dream.",
                 done: "You've learned that calm is control. Steady the dreamer, and the dream steadies too.",
-                tip: "If a dream turns intense, slow your breathing first — everything else follows."
+                tip: "If a dream turns intense, slow your breathing first — everything else follows.",
+                didYouKnow: "Dreams amplify whatever you feel, so your emotional state is the single biggest lever you have over how a dream behaves — calm makes it steady and responsive, panic distorts it and pulls you awake."
             ),
             LucidLessonContent(
                 id: "stable-5",
                 title: "Extending Your Time",
                 icon: "hourglass.bottomhalf.filled",
                 hook: "With a few small rituals, seconds of lucidity can stretch into minutes.",
-                teach: "Combine your tools: ground your senses, stay calm, spin if needed, and keep gently engaging the dream rather than just watching. Some dreamers声 even say \"the dream continues\" to reinforce it. Each habit buys you more time inside.",
+                teach: "Combine your tools: ground your senses, stay calm, spin if needed, and keep gently engaging the dream rather than just watching. Some dreamers even say \"the dream continues\" out loud to reinforce it. Each habit buys you more time inside.",
                 quiz: LucidQuiz(
                     question: "How do you make lucid dreams last longer?",
                     options: [
@@ -832,7 +867,8 @@ enum LucidCurriculum {
                 reflection: "Which stabilization tool feels most natural to you so far?",
                 challenge: "Plan your in-dream sequence: realize → calm → rub hands → engage. Rehearse it tonight.",
                 done: "Stabilization complete. You can not only enter the dream — you can stay and explore it.",
-                tip: "Don't try to do everything. One calm, grounding habit, done well, is enough to hold a dream."
+                tip: "Don't try to do everything. One calm, grounding habit, done well, is enough to hold a dream.",
+                didYouKnow: "Early lucid dreams often last only seconds, but practitioners who layer these stabilization habits report stretching them into many minutes — and occasionally far longer — of clear, explorable dreaming."
             )
         ]
     )
@@ -864,7 +900,8 @@ enum LucidCurriculum {
                 reflection: "Which recall basic have you been skipping — intention, stillness, or writing?",
                 challenge: "Tonight, set the intention and, on waking, write one line even if it's \"nothing yet.\"",
                 done: "You've turned the most discouraging wall into a simple, solvable habit.",
-                tip: "Don't measure one night. Measure the trend over two weeks — it climbs."
+                tip: "Don't measure one night. Measure the trend over two weeks — it climbs.",
+                didYouKnow: "Even people convinced they \"never dream\" almost always start recalling dreams within a week or two of keeping a journal. They were dreaming all along — the memories simply weren't being caught."
             ),
             LucidLessonContent(
                 id: "problems-2",
@@ -885,7 +922,8 @@ enum LucidCurriculum {
                 reflection: "What will be your very first action next time you realize you're dreaming?",
                 challenge: "Rehearse the first move tonight: \"lucid → calm → rub hands.\"",
                 done: "You've got a plan for the most heartbreaking near-miss in lucid dreaming.",
-                tip: "Look at the ground or your hands — detail anchors you faster than anything."
+                tip: "Look at the ground or your hands — detail anchors you faster than anything.",
+                didYouKnow: "Waking the instant you go lucid is the most common beginner complaint — and one of the most fixable, because it's about your state in that moment, not a lack of skill. The cure is calm, not more effort."
             ),
             LucidLessonContent(
                 id: "problems-3",
@@ -906,7 +944,8 @@ enum LucidCurriculum {
                 reflection: "When you've learned hard skills before, how did you get past the plateau?",
                 challenge: "Recommit to one simple routine for the next week — no chopping and changing.",
                 done: "You've reframed the plateau: not a wall, but the runway before takeoff.",
-                tip: "Lower the pressure. Lucidity comes more easily to a relaxed mind than a desperate one."
+                tip: "Lower the pressure. Lucidity comes more easily to a relaxed mind than a desperate one.",
+                didYouKnow: "Plateaus show up in every kind of skill learning, from music to sports. Breakthroughs frequently arrive after a calm, consistent stretch rather than a frantic push — progress was building under the surface the whole time."
             ),
             LucidLessonContent(
                 id: "problems-4",
@@ -927,7 +966,8 @@ enum LucidCurriculum {
                 reflection: "Where in life does 'trying harder' backfire and 'expecting calmly' work better?",
                 challenge: "Plan one indirect trick to try in-dream: reach into a pocket and expect what you want.",
                 done: "You've learned the paradox of dream control: let go, and it answers.",
-                tip: "Look away from what's failing, expect it behind you, then turn back. It's often there."
+                tip: "Look away from what's failing, expect it behind you, then turn back. It's often there.",
+                didYouKnow: "This mirrors how mental imagery works awake: the mind tends to resist forced commands but follows calm, confident expectation. In a dream, that quirk becomes your main tool for control."
             ),
             LucidLessonContent(
                 id: "problems-5",
@@ -948,7 +988,8 @@ enum LucidCurriculum {
                 reflection: "Is there a recurring fear in your dreams you'd meet differently if you knew it wasn't real?",
                 challenge: "Decide your calm response in advance: \"It's a dream. I'm safe. I can face this.\"",
                 done: "You've turned your scariest dreams into doorways — and into practice.",
-                tip: "If a dream is ever too much, you can always choose to wake. You're always in charge."
+                tip: "If a dream is ever too much, you can always choose to wake. You're always in charge.",
+                didYouKnow: "Lucidity is being studied as a genuine therapy for chronic nightmares: a technique called imagery rehearsal helps people calmly re-script recurring bad dreams, and lucid awareness can make that shift happen from inside the dream itself."
             ),
             LucidLessonContent(
                 id: "problems-6",
@@ -969,7 +1010,8 @@ enum LucidCurriculum {
                 reflection: "How do you tell the difference between a tired night to push and one to simply rest?",
                 challenge: "Tonight, honestly check in: if you're drained, skip the techniques and sleep deeply.",
                 done: "Common Problems complete. You can navigate the walls — and know when to simply rest.",
-                tip: "A rested dreamer beats a burnt-out one every time. Sleep is never wasted."
+                tip: "A rested dreamer beats a burnt-out one every time. Sleep is never wasted.",
+                didYouKnow: "Sleep deprivation measurably cuts both REM time and dream recall — the two things lucid dreaming needs most. Resting fully isn't stepping away from the practice; it's quietly strengthening it."
             )
         ]
     )
@@ -1001,7 +1043,8 @@ enum LucidCurriculum {
                 reflection: "If you could open a door to anywhere tonight, where would it lead?",
                 challenge: "Choose your go-to portal (a door, a fog, a spin) and your first destination.",
                 done: "You've learned to bend the dream's geography. The whole dreamscape is yours to travel.",
-                tip: "Commit fully to the method you pick. Half-belief gives you half a door."
+                tip: "Commit fully to the method you pick. Half-belief gives you half a door.",
+                didYouKnow: "Scene changes work because the dreaming brain rebuilds your surroundings on the fly from expectation rather than from a fixed map — which is why walking through a door and expecting somewhere new actually delivers it."
             ),
             LucidLessonContent(
                 id: "advanced-2",
@@ -1022,7 +1065,8 @@ enum LucidCurriculum {
                 reflection: "If you could ask a dream character one question, what would it be?",
                 challenge: "Decide your one question now, ready for your next lucid encounter.",
                 done: "You've opened a dialogue with your own depths. Some answers stay with you for years.",
-                tip: "Be kind to dream characters. How you treat them often shapes how the dream responds."
+                tip: "Be kind to dream characters. How you treat them often shapes how the dream responds.",
+                didYouKnow: "Researchers have actually run experiments with lucid dreamers asking their dream characters to do math or make rhymes — the answers are often \"wrong\" or surprising, offering a strange window into how the dreaming mind builds these figures from within."
             ),
             LucidLessonContent(
                 id: "advanced-3",
@@ -1043,7 +1087,8 @@ enum LucidCurriculum {
                 reflection: "What kind of flying calls to you — soaring, floating, rocketing upward?",
                 challenge: "Pick your flight method and rehearse the feeling of total confidence in it.",
                 done: "You've claimed the sky. Movement in dreams now bends to your belief.",
-                tip: "If you stall mid-air, don't panic — look up, expect to rise, and you'll lift again."
+                tip: "If you stall mid-air, don't panic — look up, expect to rise, and you'll lift again.",
+                didYouKnow: "Flying is one of the most universally reported pleasant dreams across cultures and eras — a near-universal human experience, and for many people the very first thing they try once they realize they're dreaming."
             ),
             LucidLessonContent(
                 id: "advanced-4",
@@ -1064,7 +1109,8 @@ enum LucidCurriculum {
                 reflection: "If you became lucid tonight, what's the one thing you'd most want to do?",
                 challenge: "Write down a single dream goal and hold it as you fall asleep.",
                 done: "You've given your lucidity a purpose. Every dream now has a destination.",
-                tip: "Keep one goal at a time. A focused dreamer goes deeper than a scattered one."
+                tip: "Keep one goal at a time. A focused dreamer goes deeper than a scattered one.",
+                didYouKnow: "Setting one clear goal beforehand is among the most reliable ways experienced dreamers make the most of a short lucid window — and it doubles as a MILD-style intention that can help trigger lucidity in the first place."
             ),
             LucidLessonContent(
                 id: "advanced-5",
@@ -1085,7 +1131,8 @@ enum LucidCurriculum {
                 reflection: "What detail would you study first if a dream became more real than waking?",
                 challenge: "Plan to examine one small object in close, sensory detail next time you're lucid.",
                 done: "You've learned to turn up the dream's resolution. Reality has competition now.",
-                tip: "Looking closely at your dream hands is a classic way to instantly deepen a scene."
+                tip: "Looking closely at your dream hands is a classic way to instantly deepen a scene.",
+                didYouKnow: "Some lucid dreams are reported as feeling \"more real than waking life\" — vividness you can deliberately turn up. The more sensory attention you pour into the details around you, the sharper and more stable the dream world becomes."
             ),
             LucidLessonContent(
                 id: "advanced-6",
@@ -1106,7 +1153,8 @@ enum LucidCurriculum {
                 reflection: "What kind of dreamer do you want to be a year from now?",
                 challenge: "Choose the one habit from this whole path you'll keep forever — and start tonight.",
                 done: "You've completed the path. From the half-light of curiosity to a true dreamer — the night is yours now.",
-                tip: "Revisit any lesson anytime. Even masters return to the foundations."
+                tip: "Revisit any lesson anytime. Even masters return to the foundations.",
+                didYouKnow: "Long-term practitioners often describe lucid dreaming the way meditators describe their practice: not a skill you finish, but one that keeps unfolding and deepening for years as you keep gently tending it."
             )
         ]
     )

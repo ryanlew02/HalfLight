@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage("userName") private var userName = "Dreamer"
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("dailyReminderEnabled") private var dailyReminder = false
+    @AppStorage("soundEffectsEnabled") private var soundEnabled = true
 
     var body: some View {
         Form {
@@ -34,6 +35,11 @@ struct SettingsView: View {
                     NotificationSettingsView()
                 } label: {
                     SettingRow(title: "Notifications", systemImage: "bell", value: dailyReminder ? "On" : "Off")
+                }
+                NavigationLink {
+                    SoundSettingsView()
+                } label: {
+                    SettingRow(title: "Sound & Haptics", systemImage: "speaker.wave.2", value: soundEnabled ? "On" : "Off")
                 }
             }
             .listRowBackground(Color.dreamSurface)
@@ -177,15 +183,39 @@ struct AppearanceSettingsView: View {
 
 struct NotificationSettingsView: View {
     @AppStorage("dailyReminderEnabled") private var dailyReminder = false
+    @AppStorage("morningReminderMinutes") private var morningReminderMinutes = 9 * 60
+
+    /// Bridges the minutes-since-midnight store to the time picker's `Date`.
+    private var morningTime: Binding<Date> {
+        Binding {
+            Calendar.current.date(
+                bySettingHour: morningReminderMinutes / 60,
+                minute: morningReminderMinutes % 60,
+                second: 0,
+                of: .now
+            ) ?? .now
+        } set: { newValue in
+            let parts = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            morningReminderMinutes = (parts.hour ?? 9) * 60 + (parts.minute ?? 0)
+        }
+    }
 
     var body: some View {
         Form {
             Section {
                 Toggle(isOn: $dailyReminder) {
-                    Label("Daily dream reminder", systemImage: "bell")
+                    Label("Dream reminders", systemImage: "bell")
+                }
+                if dailyReminder {
+                    DatePicker(
+                        selection: morningTime,
+                        displayedComponents: .hourAndMinute
+                    ) {
+                        Label("Morning reminder", systemImage: "sunrise")
+                    }
                 }
             } footer: {
-                Text("A gentle nudge each morning to record your dreams. (Coming soon.)")
+                Text("Gentle nudges to keep your dream journal — and your streak — alive: a morning prompt at your chosen time to capture last night's dream, a reminder if a day goes by, and an evening heads-up when your streak is about to break. If the toggle switches back off, notifications are disabled for HalfLight in your device's Settings.")
             }
             .listRowBackground(Color.dreamSurface)
         }
@@ -193,6 +223,43 @@ struct NotificationSettingsView: View {
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Notifications")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+}
+
+// MARK: - Sound & Haptics
+
+struct SoundSettingsView: View {
+    @AppStorage("soundEffectsEnabled") private var soundEnabled = true
+    @AppStorage("hapticsEnabled") private var hapticsEnabled = true
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(isOn: $soundEnabled) {
+                    Label("Sound effects", systemImage: "speaker.wave.2.fill")
+                }
+                Toggle(isOn: $hapticsEnabled) {
+                    Label("Haptics", systemImage: "hand.tap.fill")
+                }
+            } footer: {
+                Text("Little sounds and taps when you earn XP, answer questions, and move around. They mix with your music and follow the silent switch.")
+            }
+            .listRowBackground(Color.dreamSurface)
+        }
+        .scrollContentBackground(.hidden)
+        .background { DreamBackground() }
+        .tint(.dreamPrimary)
+        .navigationTitle("Sound & Haptics")
+        // Give an instant taste of the change when turning effects on.
+        .onChange(of: soundEnabled) { _, isOn in
+            if isOn { SoundManager.shared.play(.reward) }
+        }
+        .onChange(of: hapticsEnabled) { _, isOn in
+            if isOn { SoundManager.shared.play(.tap) }
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

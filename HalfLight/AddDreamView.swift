@@ -24,6 +24,11 @@ struct AddDreamView: View {
     @State private var mood: Dream.Mood
     @State private var tagText: String
 
+    // AI analysis captured in-form, so a dream can be interpreted before it's saved.
+    @State private var aiCategory: String?
+    @State private var aiMeaning: String?
+    @State private var aiThemes: [String]
+
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @State private var transcriber = DreamTranscriber()
     @State private var entryBeforeDictation = ""
@@ -41,6 +46,9 @@ struct AddDreamView: View {
         _entry = State(initialValue: existingDream?.entry ?? "")
         _mood = State(initialValue: existingDream?.mood ?? .vivid)
         _tagText = State(initialValue: existingDream?.tags.joined(separator: ", ") ?? "")
+        _aiCategory = State(initialValue: existingDream?.aiCategory)
+        _aiMeaning = State(initialValue: existingDream?.aiMeaning)
+        _aiThemes = State(initialValue: existingDream?.aiThemes ?? [])
     }
 
     private var isEditing: Bool { existingDream != nil }
@@ -106,6 +114,11 @@ struct AddDreamView: View {
                 }
                 .listRowBackground(Color.dreamSurface)
 
+                Section("AI Insight") {
+                    aiInsightControl
+                }
+                .listRowBackground(Color.dreamSurface)
+
                 if isEditing, onDelete != nil {
                     Section {
                         Button(role: .destructive) {
@@ -164,6 +177,9 @@ struct AddDreamView: View {
     }
 
     private func save() {
+        // A new dream that earns XP triggers the reward sound; this tap covers
+        // edits (and is harmlessly replaced by the reward when one follows).
+        SoundManager.shared.play(.tap)
         transcriber.stop()
         let tags = tagText
             .split(separator: ",")
@@ -174,7 +190,10 @@ struct AddDreamView: View {
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             entry: entry.trimmingCharacters(in: .whitespacesAndNewlines),
             mood: mood,
-            tags: tags
+            tags: tags,
+            aiCategory: aiMeaning == nil ? nil : aiCategory,
+            aiMeaning: aiMeaning,
+            aiThemes: aiMeaning == nil ? [] : aiThemes
         )
         onSave(draft)
         dismiss()
@@ -214,13 +233,18 @@ struct AddDreamView: View {
     }
 
     private func autoTag() {
+        SoundManager.shared.play(.tap)
         Task {
             guard let suggested = await analyzer.suggestTags(
                 title: title,
                 entry: entry,
                 mood: mood.rawValue
-            ) else { return }
+            ) else {
+                SoundManager.shared.play(.wrong)
+                return
+            }
             mergeTags(suggested)
+            SoundManager.shared.play(.shimmer)
         }
     }
 
@@ -235,6 +259,99 @@ struct AddDreamView: View {
             tags.append(tag)
         }
         tagText = tags.joined(separator: ", ")
+    }
+
+    // MARK: - AI insight
+
+    /// Analysis needs something to interpret, so it requires entry text.
+    private var canAnalyze: Bool {
+        !entry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @ViewBuilder
+    private var aiInsightControl: some View {
+        if let meaning = aiMeaning {
+            VStack(alignment: .leading, spacing: 10) {
+                if let category = aiCategory {
+                    Text(category)
+                        .font(.dreamBody(12, .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color.dreamPrimary.opacity(0.18), in: .capsule)
+                        .foregroundStyle(Color.dreamPrimary)
+                }
+
+                Text(meaning)
+                    .font(.dreamBody(15))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !aiThemes.isEmpty {
+                    Text(aiThemes.map(\.capitalized).joined(separator: " · "))
+                        .font(.dreamBody(13, .medium))
+                        .foregroundStyle(Color.dreamPrimary)
+                }
+
+                Button(action: analyze) {
+                    Label(
+                        analyzer.isAnalyzing ? "Re-analyzing…" : "Re-analyze",
+                        systemImage: "arrow.clockwise"
+                    )
+                    .font(.dreamBody(14, .semibold))
+                    .foregroundStyle(analyzer.isAnalyzing ? .secondary : Color.dreamPrimary)
+                }
+                .buttonStyle(.plain)
+                .disabled(analyzer.isAnalyzing)
+            }
+            .padding(.vertical, 2)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: analyze) {
+                    Label {
+                        Text(analyzer.isAnalyzing ? "Interpreting your dream…" : "Analyze with AI")
+                    } icon: {
+                        if analyzer.isAnalyzing {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "sparkles")
+                        }
+                    }
+                    .font(.dreamBody(15, .semibold))
+                    .foregroundStyle(canAnalyze ? Color.dreamPrimary : .secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canAnalyze || analyzer.isAnalyzing)
+
+                Text("Get an AI interpretation now, or skip it and analyze later.")
+                    .font(.dreamCaption)
+                    .foregroundStyle(.secondary)
+
+                if let error = analyzer.errorMessage {
+                    Text(error)
+                        .font(.dreamCaption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func analyze() {
+        SoundManager.shared.play(.tap)
+        Task {
+            guard let result = await analyzer.analyze(
+                title: title,
+                entry: entry,
+                mood: mood.rawValue
+            ) else {
+                SoundManager.shared.play(.wrong)
+                return
+            }
+            aiCategory = result.category
+            aiMeaning = result.meaning
+            aiThemes = result.themes ?? []
+            SoundManager.shared.play(.shimmer)
+        }
     }
 
     // MARK: - Dictation
@@ -260,6 +377,7 @@ struct AddDreamView: View {
     }
 
     private func toggleDictation() {
+        SoundManager.shared.play(.tap)
         if transcriber.isRecording {
             transcriber.stop()
         } else {

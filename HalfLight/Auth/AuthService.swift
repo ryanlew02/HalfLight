@@ -28,13 +28,35 @@ enum AuthProvider: String, Sendable {
     case unknown
 }
 
+/// A user's public profile. `firstName`/`lastName` may be empty when only the
+/// username could be fetched (names are kept private on the server).
+struct ProfileInfo: Sendable {
+    let username: String
+    let firstName: String
+    let lastName: String
+}
+
 /// A signed-in account, identified by email (display only).
 protocol AuthBackend: Sendable {
     func currentEmail() async -> String?
     func currentProvider() async -> AuthProvider?
-    func signUp(email: String, password: String) async throws -> String
+    /// Whether a username isn't already taken (checked case-insensitively).
+    func isUsernameAvailable(_ username: String) async throws -> Bool
+    func signUp(
+        email: String,
+        password: String,
+        username: String,
+        firstName: String,
+        lastName: String
+    ) async throws -> String
     func signIn(email: String, password: String) async throws -> String
     func signInWithApple(idToken: String, nonce: String, email: String?) async throws -> String
+    /// Create the profile row for the currently signed-in user (used to finish
+    /// onboarding accounts that didn't pick a username at sign-up, e.g. Apple).
+    func createProfile(username: String, firstName: String, lastName: String) async throws
+    /// The current user's existing profile, if any (so returning users aren't
+    /// asked to choose a username again).
+    func fetchProfile() async -> ProfileInfo?
     func sendPasswordReset(email: String) async throws
     func changePassword(currentPassword: String, newPassword: String) async throws
     func signOut() async throws
@@ -57,6 +79,9 @@ final class AuthService {
     private(set) var status: Status = .unknown
     private(set) var email: String?
     private(set) var provider: AuthProvider = .unknown
+    private(set) var username: String?
+    private(set) var firstName: String?
+    private(set) var lastName: String?
     var isWorking = false
     var errorMessage: String?
     /// A transient success message (e.g. password-reset confirmation).
@@ -67,6 +92,9 @@ final class AuthService {
     private var appleNonce: String?
 
     var isSignedIn: Bool { status == .signedIn }
+
+    /// Signed in but without a username yet — the app gates onboarding on this.
+    var needsProfileSetup: Bool { isSignedIn && (username?.isEmpty ?? true) }
 
     /// Only email/password accounts can change their password in-app; Apple
     /// accounts don't have one to manage.
@@ -90,10 +118,133 @@ final class AuthService {
         self.email = email
         provider = (email == nil) ? .unknown : (await backend.currentProvider() ?? .unknown)
         status = (email == nil) ? .signedOut : .signedIn
+        let defaults = UserDefaults.standard
+        username = defaults.string(forKey: "userUsername")
+        firstName = defaults.string(forKey: "userFirstName")
+        lastName = defaults.string(forKey: "userLastName")
+        // Reinstall / new device: pull the username from the server so an existing
+        // account isn't asked to choose one again.
+        await hydrateProfileIfNeeded()
     }
 
-    func signUp(email: String, password: String) async {
-        await perform(provider: .email) { try await self.backend.signUp(email: email, password: password) }
+    /// If signed in but no username is known locally, fetch it from the backend
+    /// and cache it. Leaves names untouched when the server doesn't return them.
+    private func hydrateProfileIfNeeded() async {
+        guard isSignedIn, (username?.isEmpty ?? true) else { return }
+        guard let remote = await backend.fetchProfile() else { return }
+        let defaults = UserDefaults.standard
+        username = remote.username
+        defaults.set(remote.username, forKey: "userUsername")
+        if !remote.firstName.isEmpty {
+            firstName = remote.firstName
+            defaults.set(remote.firstName, forKey: "userFirstName")
+            defaults.set(remote.firstName, forKey: "userName")
+        }
+        if !remote.lastName.isEmpty {
+            lastName = remote.lastName
+            defaults.set(remote.lastName, forKey: "userLastName")
+        }
+    }
+
+    /// Finish onboarding for an account with no username yet (e.g. Sign in with
+    /// Apple). Validates, checks uniqueness, writes the profile, and lifts the gate.
+    /// Returns `true` on success.
+    @discardableResult
+    func completeProfile(username: String, firstName: String, lastName: String) async -> Bool {
+        isWorking = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isWorking = false }
+
+        let handle = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !first.isEmpty, !last.isEmpty else {
+            errorMessage = "Please enter your first and last name."
+            return false
+        }
+        guard Self.isValidUsername(handle) else {
+            errorMessage = "Usernames must be 3–20 characters using letters, numbers, or underscores."
+            return false
+        }
+        do {
+            guard try await backend.isUsernameAvailable(handle) else {
+                errorMessage = "“\(handle)” is taken. Try another username."
+                return false
+            }
+            try await backend.createProfile(username: handle, firstName: first, lastName: last)
+            persistProfile(username: handle, firstName: first, lastName: last)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Create an account with a unique username and the dreamer's name.
+    func signUp(
+        email: String,
+        password: String,
+        username: String,
+        firstName: String,
+        lastName: String
+    ) async {
+        isWorking = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isWorking = false }
+
+        let handle = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !first.isEmpty, !last.isEmpty else {
+            errorMessage = "Please enter your first and last name."
+            return
+        }
+        guard Self.isValidUsername(handle) else {
+            errorMessage = "Usernames must be 3–20 characters using letters, numbers, or underscores."
+            return
+        }
+
+        do {
+            guard try await backend.isUsernameAvailable(handle) else {
+                errorMessage = "“\(handle)” is taken. Try another username."
+                return
+            }
+            let resolvedEmail = try await backend.signUp(
+                email: email,
+                password: password,
+                username: handle,
+                firstName: first,
+                lastName: last
+            )
+            persistProfile(username: handle, firstName: first, lastName: last)
+            self.email = resolvedEmail
+            self.provider = .email
+            status = .signedIn
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Persist profile fields locally so they survive relaunch and personalize the
+    /// app (the greeting reads `userName`).
+    private func persistProfile(username: String, firstName: String, lastName: String) {
+        let defaults = UserDefaults.standard
+        defaults.set(username, forKey: "userUsername")
+        defaults.set(firstName, forKey: "userFirstName")
+        defaults.set(lastName, forKey: "userLastName")
+        defaults.set(firstName, forKey: "userName")
+        self.username = username
+        self.firstName = firstName
+        self.lastName = lastName
+    }
+
+    /// Usernames: 3–20 chars, lowercase letters, numbers, or underscores.
+    static func isValidUsername(_ username: String) -> Bool {
+        username.range(of: "^[a-z0-9_]{3,20}$", options: .regularExpression) != nil
     }
 
     func signIn(email: String, password: String) async {
@@ -171,8 +322,21 @@ final class AuthService {
                 return
             }
             let appleEmail = credential.email
+            let appleName = credential.fullName
             await perform(provider: .apple) {
                 try await self.backend.signInWithApple(idToken: idToken, nonce: nonce, email: appleEmail)
+            }
+            // Pull an existing profile if there is one; otherwise prefill the
+            // username-setup screen with the name Apple just gave us (first sign-in
+            // only — Apple won't send it again).
+            await hydrateProfileIfNeeded()
+            if needsProfileSetup {
+                if let given = appleName?.givenName, (firstName?.isEmpty ?? true) {
+                    firstName = given
+                }
+                if let family = appleName?.familyName, (lastName?.isEmpty ?? true) {
+                    lastName = family
+                }
             }
         }
     }
@@ -216,6 +380,7 @@ final class AuthService {
 final class MockAuthBackend: AuthBackend {
     private let key = "mockAuthEmail"
     private let providerKey = "mockAuthProvider"
+    private let usernamesKey = "mockTakenUsernames"
 
     func currentEmail() async -> String? {
         UserDefaults.standard.string(forKey: key)
@@ -225,8 +390,24 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.string(forKey: providerKey).flatMap(AuthProvider.init(rawValue:))
     }
 
-    func signUp(email: String, password: String) async throws -> String {
+    func isUsernameAvailable(_ username: String) async throws -> Bool {
+        let taken = Set(UserDefaults.standard.stringArray(forKey: usernamesKey) ?? [])
+        return !taken.contains(username.lowercased())
+    }
+
+    func signUp(
+        email: String,
+        password: String,
+        username: String,
+        firstName: String,
+        lastName: String
+    ) async throws -> String {
         try validate(email: email, password: password)
+        var taken = Set(UserDefaults.standard.stringArray(forKey: usernamesKey) ?? [])
+        guard taken.insert(username.lowercased()).inserted else {
+            throw AuthError.message("“\(username)” is taken. Try another username.")
+        }
+        UserDefaults.standard.set(Array(taken), forKey: usernamesKey)
         UserDefaults.standard.set(email, forKey: key)
         UserDefaults.standard.set(AuthProvider.email.rawValue, forKey: providerKey)
         return email
@@ -244,6 +425,19 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.set(resolved, forKey: key)
         UserDefaults.standard.set(AuthProvider.apple.rawValue, forKey: providerKey)
         return resolved
+    }
+
+    func createProfile(username: String, firstName: String, lastName: String) async throws {
+        var taken = Set(UserDefaults.standard.stringArray(forKey: usernamesKey) ?? [])
+        guard taken.insert(username.lowercased()).inserted else {
+            throw AuthError.message("“\(username)” is taken. Try another username.")
+        }
+        UserDefaults.standard.set(Array(taken), forKey: usernamesKey)
+    }
+
+    func fetchProfile() async -> ProfileInfo? {
+        // No real server in the mock — same-device username persists locally.
+        nil
     }
 
     func sendPasswordReset(email: String) async throws {
@@ -278,6 +472,26 @@ final class MockAuthBackend: AuthBackend {
 // MARK: - Supabase backend (active once the package is added)
 
 #if canImport(Supabase)
+/// A row in the `profiles` table that mirrors an auth user's public details.
+private struct ProfileRow: Codable {
+    let id: UUID
+    let username: String
+    let firstName: String
+    let lastName: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case username
+        case firstName = "first_name"
+        case lastName = "last_name"
+    }
+}
+
+/// Minimal row for username-only reads (names are kept private server-side).
+private struct UsernameRow: Codable {
+    let username: String
+}
+
 /// Real backend backed by Supabase Auth. Note: exact API names can vary slightly
 /// between supabase-swift versions — adjust here if the compiler flags them.
 final class SupabaseAuthBackend: AuthBackend {
@@ -297,14 +511,56 @@ final class SupabaseAuthBackend: AuthBackend {
         return .unknown
     }
 
-    func signUp(email: String, password: String) async throws -> String {
+    func isUsernameAvailable(_ username: String) async throws -> Bool {
         guard SupabaseConfig.isConfigured else { throw notConfigured }
-        let response = try await client.auth.signUp(email: email, password: password)
+        // Requires a `profiles` table with a unique, lowercase `username` column.
+        let rows: [ProfileRow] = try await client
+            .from("profiles")
+            .select("username")
+            .eq("username", value: username)
+            .limit(1)
+            .execute()
+            .value
+        return rows.isEmpty
+    }
+
+    func signUp(
+        email: String,
+        password: String,
+        username: String,
+        firstName: String,
+        lastName: String
+    ) async throws -> String {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        let response = try await client.auth.signUp(
+            email: email,
+            password: password,
+            data: [
+                "username": .string(username),
+                "first_name": .string(firstName),
+                "last_name": .string(lastName)
+            ]
+        )
         // Supabase doesn't error on a duplicate email when confirmations are on
         // (it avoids leaking which emails exist); instead it returns a user with
         // an empty `identities` array. Treat that as "already registered".
         if let identities = response.user.identities, identities.isEmpty {
             throw AuthError.message("An account with this email already exists. Try resetting your password instead.")
+        }
+        // Persist the profile row. The DB's unique constraint on `username` is the
+        // source of truth — if two people race for the same name, the insert fails.
+        do {
+            try await client
+                .from("profiles")
+                .insert(ProfileRow(
+                    id: response.user.id,
+                    username: username,
+                    firstName: firstName,
+                    lastName: lastName
+                ))
+                .execute()
+        } catch {
+            throw AuthError.message("“\(username)” was just taken. Try another username.")
         }
         return response.user.email ?? email
     }
@@ -321,6 +577,36 @@ final class SupabaseAuthBackend: AuthBackend {
             credentials: .init(provider: .apple, idToken: idToken, nonce: nonce)
         )
         return session.user.email ?? email ?? ""
+    }
+
+    func createProfile(username: String, firstName: String, lastName: String) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard let userID = (try? await client.auth.session)?.user.id else {
+            throw AuthError.message("You need to be signed in to choose a username.")
+        }
+        do {
+            try await client
+                .from("profiles")
+                .insert(ProfileRow(id: userID, username: username, firstName: firstName, lastName: lastName))
+                .execute()
+        } catch {
+            throw AuthError.message("“\(username)” was just taken. Try another username.")
+        }
+    }
+
+    func fetchProfile() async -> ProfileInfo? {
+        guard SupabaseConfig.isConfigured,
+              let userID = (try? await client.auth.session)?.user.id else { return nil }
+        let rows: [UsernameRow]? = try? await client
+            .from("profiles")
+            .select("username")
+            .eq("id", value: userID)
+            .limit(1)
+            .execute()
+            .value
+        guard let username = rows?.first?.username else { return nil }
+        // Names stay private on the server; the gate only needs the username.
+        return ProfileInfo(username: username, firstName: "", lastName: "")
     }
 
     func sendPasswordReset(email: String) async throws {

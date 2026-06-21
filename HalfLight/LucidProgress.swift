@@ -42,10 +42,15 @@ enum LucidProgress {
     }
 
     /// Mark a lesson complete and sync the lucid lesson count used elsewhere.
-    static func complete(_ id: String) {
+    /// Returns `true` only when this was a brand-new completion (i.e. XP was
+    /// actually earned), so the caller can celebrate it; re-finishing an
+    /// already-completed lesson returns `false`.
+    @discardableResult
+    static func complete(_ id: String) -> Bool {
         var ids = completedIDs()
-        guard ids.insert(id).inserted else { return }
+        guard ids.insert(id).inserted else { return false }
         UserDefaults.standard.set(Array(ids), forKey: completedKey)
         UserDefaults.standard.set(ids.count, forKey: countKey)
+        return true
     }
 }

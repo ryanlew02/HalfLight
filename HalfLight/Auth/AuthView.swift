@@ -24,6 +24,9 @@ struct AuthView: View {
     }
 
     @State private var mode: Mode = .signUp
+    @State private var firstName = ""
+    @State private var lastName = ""
+    @State private var username = ""
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
@@ -68,6 +71,18 @@ struct AuthView: View {
             header
 
             VStack(spacing: DreamMetric.md) {
+                if mode == .signUp {
+                    HStack(spacing: DreamMetric.md) {
+                        field("First name", text: $firstName, isSecure: false)
+                            .textContentType(.givenName)
+                        field("Last name", text: $lastName, isSecure: false)
+                            .textContentType(.familyName)
+                    }
+                    field("Username", text: $username, isSecure: false)
+                        .textContentType(.username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
                 field("Email", text: $email, isSecure: false)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
@@ -145,6 +160,9 @@ struct AuthView: View {
             Button(mode.toggle) {
                 withAnimation { mode = (mode == .signUp ? .signIn : .signUp) }
                 confirmPassword = ""
+                firstName = ""
+                lastName = ""
+                username = ""
                 auth.errorMessage = nil
                 auth.infoMessage = nil
             }
@@ -252,14 +270,22 @@ struct AuthView: View {
     }
 
     private func submit() {
+        // The button's style plays the press tap; only the error needs a sound.
         Task {
             switch mode {
             case .signUp:
                 guard password == confirmPassword else {
                     auth.errorMessage = "Passwords don't match."
+                    SoundManager.shared.play(.wrong)
                     return
                 }
-                await auth.signUp(email: email, password: password)
+                await auth.signUp(
+                    email: email,
+                    password: password,
+                    username: username,
+                    firstName: firstName,
+                    lastName: lastName
+                )
             case .signIn:
                 await auth.signIn(email: email, password: password)
             }
