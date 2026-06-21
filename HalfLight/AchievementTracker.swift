@@ -15,6 +15,9 @@ enum AchievementTracker {
     private static let celebratedKey = "celebratedAchievements"
     /// Set once the baseline has been recorded, so existing dreamers aren't flooded.
     private static let seededKey = "achievementsSeeded"
+    /// Maps achievement id → the date it was first seen unlocked, so the Home
+    /// screen can show the most recent ones.
+    private static let unlockDatesKey = "achievementUnlockDates"
 
     private static func celebratedIDs() -> Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: celebratedKey) ?? [])
@@ -22,6 +25,26 @@ enum AchievementTracker {
 
     private static func storeCelebrated(_ ids: Set<String>) {
         UserDefaults.standard.set(Array(ids), forKey: celebratedKey)
+    }
+
+    private static func unlockDates() -> [String: Date] {
+        (UserDefaults.standard.dictionary(forKey: unlockDatesKey) as? [String: Date]) ?? [:]
+    }
+
+    private static func storeUnlockDates(_ dates: [String: Date]) {
+        UserDefaults.standard.set(dates, forKey: unlockDatesKey)
+    }
+
+    /// Record now as the unlock time for any of `ids` not already dated.
+    private static func stampUnlocked(_ ids: [String]) {
+        var dates = unlockDates()
+        let now = Date()
+        var changed = false
+        for id in ids where dates[id] == nil {
+            dates[id] = now
+            changed = true
+        }
+        if changed { storeUnlockDates(dates) }
     }
 
     /// One-time baseline: records everything already unlocked as "celebrated" so a
@@ -48,6 +71,41 @@ enum AchievementTracker {
         }
         guard !newly.isEmpty else { return [] }
         storeCelebrated(celebrated.union(newly.map(\.id)))
+        stampUnlocked(newly.map(\.id))
         return newly
+    }
+
+    /// Every achievement ordered for a "recently unlocked" view: unlocked badges
+    /// newest-first, then locked badges in catalog order. Badges unlocked before
+    /// date tracking existed are backfilled with the time they're first read here;
+    /// date ties (e.g. that initial batch) fall back to catalog order, most
+    /// advanced first.
+    static func sortedByRecency(for stats: AchievementStats) -> [Achievement] {
+        let unlocked = Achievement.all.filter { $0.isUnlocked(for: stats) }
+        stampUnlocked(unlocked.map(\.id))
+        let dates = unlockDates()
+        let order = Dictionary(
+            uniqueKeysWithValues: Achievement.all.enumerated().map { ($0.element.id, $0.offset) }
+        )
+        return Achievement.all.sorted { lhs, rhs in
+            let lUnlocked = lhs.isUnlocked(for: stats)
+            let rUnlocked = rhs.isUnlocked(for: stats)
+            if lUnlocked != rUnlocked { return lUnlocked }  // unlocked first
+
+            let lOrder = order[lhs.id] ?? 0
+            let rOrder = order[rhs.id] ?? 0
+            if lUnlocked {
+                let l = dates[lhs.id] ?? .distantPast
+                let r = dates[rhs.id] ?? .distantPast
+                if l != r { return l > r }
+                return lOrder > rOrder  // ties: most advanced first
+            }
+            return lOrder < rOrder  // both locked: catalog order
+        }
+    }
+
+    /// The most recently unlocked achievements, newest first, limited to `limit`.
+    static func recentlyUnlocked(for stats: AchievementStats, limit: Int) -> [Achievement] {
+        Array(sortedByRecency(for: stats).lazy.filter { $0.isUnlocked(for: stats) }.prefix(limit))
     }
 }

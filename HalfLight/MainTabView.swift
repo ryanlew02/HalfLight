@@ -14,6 +14,11 @@ struct MainTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query private var dreams: [Dream]
     @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
+    @AppStorage("questBankedXP") private var questBankedXP = 0
+    /// The highest level already celebrated, so each level-up fires its popup once.
+    /// `0` means "not yet seeded" — set on first appear so existing dreamers don't
+    /// get a level-up screen just for launching the app.
+    @AppStorage("celebratedLevel") private var celebratedLevel = 0
     @AppStorage("dailyReminderEnabled") private var reminderEnabled = false
     /// Morning reminder time, stored as minutes since midnight (default 9:00 AM).
     @AppStorage("morningReminderMinutes") private var morningReminderMinutes = 9 * 60
@@ -38,20 +43,37 @@ struct MainTabView: View {
             .onPreferenceChange(TabBarHeightPreferenceKey.self) { tabBarHeight = $0 }
             .overlay {
                 if let reward = router.claimReward {
-                    XPClaimView(reward: reward) { router.dismissClaim() }
-                        .transition(.opacity)
-                        .zIndex(10)
+                    Group {
+                        switch reward.kind {
+                        case .xp:
+                            XPClaimView(reward: reward) { router.dismissClaim() }
+                        case .levelUp:
+                            LevelUpView(reward: reward) { router.dismissClaim() }
+                        }
+                    }
+                    .transition(.opacity)
+                    .zIndex(10)
                 }
             }
             // Record the baseline of already-earned badges once, then celebrate any
             // achievement the moment the dreamer crosses its goal — from any source.
             .task {
                 AchievementTracker.seedIfNeeded(for: achievementStats)
+                // Seed the level baseline once so we only celebrate future level-ups.
+                if celebratedLevel == 0 { celebratedLevel = currentLevel }
                 refreshReminders()
             }
             .onChange(of: unlockedAchievementCount) { _, _ in
                 let newly = AchievementTracker.newlyUnlocked(for: achievementStats)
                 if !newly.isEmpty { router.presentAchievements(newly) }
+            }
+            // Any XP source (a logged dream, a lucid lesson, a quest, an achievement)
+            // can push the dreamer over a level threshold — celebrate it from here.
+            .onChange(of: currentLevel) { _, newLevel in
+                guard celebratedLevel != 0, newLevel > celebratedLevel else { return }
+                let rank = DreamProgression.rank(forLevel: newLevel)
+                router.presentLevelUp(level: newLevel, rank: rank.name)
+                celebratedLevel = newLevel
             }
             // Keep reminders in step with usage: app foreground, journaling activity,
             // and the setting itself all reschedule the morning / inactivity / streak nudges.
@@ -92,6 +114,20 @@ struct MainTabView: View {
         }
     }
 
+    // MARK: - Level tracking
+
+    /// Total XP via the shared `DreamStore.totalXP`, so level-ups fire at exactly
+    /// the thresholds the Progress and Profile screens show.
+    private var totalXP: Int {
+        store.totalXP(
+            dreams: dreams,
+            lucidSections: lucidSectionsCompleted,
+            questBankedXP: questBankedXP
+        )
+    }
+
+    private var currentLevel: Int { DreamProgression.level(forXP: totalXP) }
+
     /// Metrics every badge is evaluated against, rebuilt from the live library.
     /// Mirrors the achievement stats the Progress screen shows so unlocks line up.
     private var achievementStats: AchievementStats {
@@ -114,7 +150,7 @@ struct MainTabView: View {
         case .home: HomeView()
         case .lucid: LucidDreamView()
         case .journal: DreamJournalView()
-        case .progress: StatsView()
+        case .feed: FeedView()
         case .profile: ProfileView()
         }
     }

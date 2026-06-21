@@ -1,18 +1,18 @@
-// suggest-tags — Supabase Edge Function
+// suggest-title — Supabase Edge Function
 //
-// Receives { title, entry, mood } and returns { tags: string[] } — a few short
-// theme/symbol tags drawn from the dream description. Used by the "Auto-tag"
-// button in the new-dream form. The Anthropic key lives here, server-side.
+// Receives { title, entry, mood } and returns { title: string } — a short,
+// evocative title drawn from the dream description. Used by the "Generate
+// title" button in the new-dream form. The Anthropic key lives here, server-side.
 //
-// One-time setup (key is shared with analyze-dream if already set):
+// One-time setup (key is shared with analyze-dream / suggest-tags if already set):
 //   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-//   supabase functions deploy suggest-tags --no-verify-jwt
+//   supabase functions deploy suggest-title --no-verify-jwt
 
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { guardAIRequest } from "../_shared/ai-guard.ts";
 
-// Cheapest current Claude; plenty for short tag extraction. Bump to
-// "claude-opus-4-8" or "claude-sonnet-4-6" for richer tags.
+// Cheapest current Claude; plenty for a short title. Bump to
+// "claude-opus-4-8" or "claude-sonnet-4-6" for richer titles.
 const MODEL = "claude-haiku-4-5";
 
 const corsHeaders = {
@@ -41,7 +41,6 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const title = (body.title ?? "").trim();
   const entry = (body.entry ?? "").trim();
   const mood = (body.mood ?? "").trim();
 
@@ -52,18 +51,16 @@ Deno.serve(async (req) => {
   try {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 256,
+      max_tokens: 64,
       system:
-        "You label dreams with short, searchable tags drawn from the dream's " +
-        "content. Return 3 to 6 tags. Each tag is one or two lowercase words " +
-        "naming a concrete theme, symbol, place, person, or emotion that actually " +
-        "appears in the dream (e.g. 'ocean', 'flight', 'being chased', 'family'). " +
-        "No punctuation, no hashtags, no duplicates.",
+        "You name dreams with a short, evocative title drawn from the dream's " +
+        "content. Return a single title of 2 to 5 words that captures the most " +
+        "striking image, feeling, or moment in the dream. Title Case, no quotes, " +
+        "no trailing punctuation, no emoji.",
       messages: [
         {
           role: "user",
           content:
-            `Title: ${title || "(untitled)"}\n` +
             `Mood: ${mood || "(unspecified)"}\n` +
             `Dream: ${entry}`,
         },
@@ -74,9 +71,9 @@ Deno.serve(async (req) => {
           schema: {
             type: "object",
             properties: {
-              tags: { type: "array", items: { type: "string" } },
+              title: { type: "string" },
             },
-            required: ["tags"],
+            required: ["title"],
             additionalProperties: false,
           },
         },
@@ -86,17 +83,17 @@ Deno.serve(async (req) => {
     const textBlock = response.content.find((b) => b.type === "text") as
       | { text: string }
       | undefined;
-    const parsed = JSON.parse(textBlock?.text ?? "{}") as { tags?: string[] };
+    const parsed = JSON.parse(textBlock?.text ?? "{}") as { title?: string };
 
-    const tags = (parsed.tags ?? [])
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0)
-      .slice(0, 6);
+    const title = (parsed.title ?? "").trim();
+    if (!title) {
+      return json({ error: "Title generation failed" }, 502);
+    }
 
-    return json({ tags }, 200);
+    return json({ title }, 200);
   } catch (err) {
-    console.error("suggest-tags failed:", err);
-    return json({ error: "Tag generation failed" }, 502);
+    console.error("suggest-title failed:", err);
+    return json({ error: "Title generation failed" }, 502);
   }
 });
 

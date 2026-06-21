@@ -5,10 +5,20 @@
 //  Calls the Supabase Edge Functions that proxy to Claude:
 //    - `analyze-dream` → an AI category + interpretation for a dream
 //    - `suggest-tags`  → a few theme/symbol tags drawn from the dream text
+//    - `suggest-title` → a short, evocative title for the dream
 //  The Anthropic API key lives in the functions (server-side), never in the app.
 //
 
 import Foundation
+#if canImport(Supabase)
+import Supabase
+#endif
+
+/// An error payload (`{ "error": "…" }`) returned by the edge functions, used to
+/// surface server-side messages like the daily AI limit.
+private struct ServerError: Decodable {
+    let error: String
+}
 
 /// The structured result returned by the analyze-dream function.
 struct DreamAnalysis: Decodable {
@@ -23,6 +33,11 @@ private struct TagSuggestion: Decodable {
     let tags: [String]
 }
 
+/// The structured result returned by the suggest-title function.
+private struct TitleSuggestion: Decodable {
+    let title: String
+}
+
 @MainActor
 @Observable
 final class DreamAnalyzer {
@@ -30,6 +45,8 @@ final class DreamAnalyzer {
     private(set) var isAnalyzing = false
     /// True while a suggest-tags request is in flight.
     private(set) var isSuggestingTags = false
+    /// True while a suggest-title request is in flight.
+    private(set) var isSuggestingTitle = false
     /// A user-facing message when a request fails; `nil` when there's no error.
     private(set) var errorMessage: String?
 
@@ -61,6 +78,20 @@ final class DreamAnalyzer {
         )?.tags
     }
 
+    /// Suggest a short title drawn from the dream description. Returns `nil` (and
+    /// sets `errorMessage`) on failure.
+    func suggestTitle(entry: String, mood: String) async -> String? {
+        isSuggestingTitle = true
+        defer { isSuggestingTitle = false }
+        return await post(
+            function: "suggest-title",
+            title: "",
+            entry: entry,
+            mood: mood,
+            as: TitleSuggestion.self
+        )?.title
+    }
+
     // MARK: - Networking
 
     /// POST the dream to a Supabase Edge Function and decode its JSON response.
@@ -73,6 +104,13 @@ final class DreamAnalyzer {
     ) async -> T? {
         errorMessage = nil
 
+        // The functions verify the dreamer's JWT and enforce a per-user daily
+        // limit, so the request must carry the signed-in user's access token.
+        guard let accessToken = await currentAccessToken() else {
+            errorMessage = "Sign in to use AI features."
+            return nil
+        }
+
         let endpoint = SupabaseConfig.url
             .appendingPathComponent("functions/v1/\(function)")
 
@@ -80,9 +118,10 @@ final class DreamAnalyzer {
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Supabase routes by the project's anon/publishable key.
+        // Supabase routes by the project's publishable key; the function
+        // authenticates the dreamer by the access token in Authorization.
         request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try? JSONEncoder().encode(
             ["title": title, "entry": entry, "mood": mood]
         )
@@ -94,7 +133,13 @@ final class DreamAnalyzer {
                 return nil
             }
             guard (200..<300).contains(http.statusCode) else {
-                errorMessage = "Request failed (\(http.statusCode)). Please try again."
+                // Surface the server's message (daily limit reached, sign-in
+                // required, …) when it sends one.
+                if let payload = try? JSONDecoder().decode(ServerError.self, from: data) {
+                    errorMessage = payload.error
+                } else {
+                    errorMessage = "Request failed (\(http.statusCode)). Please try again."
+                }
                 return nil
             }
             return try JSONDecoder().decode(T.self, from: data)
@@ -105,5 +150,15 @@ final class DreamAnalyzer {
             errorMessage = "Couldn't reach the server. Check your connection."
             return nil
         }
+    }
+
+    /// The signed-in dreamer's Supabase access token, or `nil` when signed out
+    /// (or the backend isn't available), which gates the AI features.
+    private func currentAccessToken() async -> String? {
+        #if canImport(Supabase)
+        return (try? await SupabaseClientProvider.shared.auth.session)?.accessToken
+        #else
+        return nil
+        #endif
     }
 }

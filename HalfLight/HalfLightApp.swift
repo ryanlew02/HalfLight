@@ -35,11 +35,19 @@ private struct RootView: View {
     var body: some View {
         Group {
             if let store {
-                MainTabView()
-                    .environment(store)
-                    .environment(auth)
-                    .tint(.dreamPrimary)
-                    .preferredColorScheme(theme.colorScheme)
+                Group {
+                    // Signed in via Apple (or an older account from before usernames)
+                    // but no handle yet: block the app behind a one-time setup gate.
+                    if auth.needsProfileSetup {
+                        UsernameSetupView()
+                    } else {
+                        MainTabView()
+                    }
+                }
+                .environment(store)
+                .environment(auth)
+                .tint(.dreamPrimary)
+                .preferredColorScheme(theme.colorScheme)
             } else {
                 Color.clear
             }

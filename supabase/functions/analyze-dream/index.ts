@@ -9,10 +9,12 @@
 //   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 //   supabase functions deploy analyze-dream --no-verify-jwt
 //
-// (`--no-verify-jwt` lets the app call it with the project's publishable key.
-//  Add auth / rate-limiting later if you open this up more widely.)
+// (`--no-verify-jwt` lets the request reach our code; the function itself then
+//  verifies the caller's user JWT and enforces the per-user daily limit via
+//  `guardAIRequest`, so it isn't actually open.)
 
 import Anthropic from "npm:@anthropic-ai/sdk";
+import { guardAIRequest } from "../_shared/ai-guard.ts";
 
 // The model. claude-haiku-4-5 is the cheapest current Claude and is plenty for
 // this task. For richer, more nuanced interpretations, switch to
@@ -48,6 +50,9 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return json({ error: "Method not allowed" }, 405);
   }
+
+  const guard = await guardAIRequest(req, corsHeaders);
+  if (!guard.ok) return guard.response!;
 
   let body: { title?: string; entry?: string; mood?: string };
   try {

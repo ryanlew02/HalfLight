@@ -326,3 +326,31 @@ enum PreviewData {
     static var store: DreamStore { DreamStore(context: container.mainContext) }
 }
 #endif
+
+// MARK: - Progression
+
+extension DreamStore {
+    /// The dreamer's total XP — the single source of truth for level and rank,
+    /// shared by the Progress screen, the Profile rank badge, and the level-up
+    /// detector so they can never disagree. Folds together journaling-credit days
+    /// (recorded, "can't remember", or credited by a since-deleted dream),
+    /// completed lucid sections, unlocked-achievement XP, and banked quest XP.
+    func totalXP(dreams: [Dream], lucidSections: Int, questBankedXP: Int) -> Int {
+        let calendar = Calendar.current
+        let dreamDays = Set(dreams.map { calendar.startOfDay(for: $0.date) })
+        // Every day that has earned journaling XP, capped at one credit per day.
+        let xpEarningDays = dreamDays.union(skippedDays).union(creditedDays)
+        // Achievement progress is measured against recorded/skipped days only.
+        let journaledDays = dreamDays.union(skippedDays)
+        let stats = AchievementStats(
+            dreams: dreams,
+            journaledDays: journaledDays,
+            lucidSections: lucidSections
+        )
+        return DreamProgression.totalXP(
+            journaledDays: xpEarningDays.count,
+            lucidSections: lucidSections,
+            achievementXP: Achievement.unlockedXP(for: stats)
+        ) + questBankedXP
+    }
+}

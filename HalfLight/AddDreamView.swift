@@ -75,6 +75,8 @@ struct AddDreamView: View {
                             .accessibilityLabel("Clear title")
                         }
                     }
+
+                    autoTitleControl
                 }
                 .listRowBackground(Color.dreamSurface)
 
@@ -197,6 +199,52 @@ struct AddDreamView: View {
         )
         onSave(draft)
         dismiss()
+    }
+
+    // MARK: - Auto-title
+
+    /// Title generation draws from the dream description, so it needs entry text.
+    private var canAutoTitle: Bool {
+        !entry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var autoTitleControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: autoTitle) {
+                Label {
+                    Text(analyzer.isSuggestingTitle ? "Generating title…" : "Generate title with AI")
+                } icon: {
+                    if analyzer.isSuggestingTitle {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "sparkles")
+                    }
+                }
+                .font(.dreamBody(15, .semibold))
+                .foregroundStyle(canAutoTitle ? Color.dreamPrimary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canAutoTitle || analyzer.isSuggestingTitle)
+
+            Text("Write your dream below, then let AI name it.")
+                .font(.dreamCaption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func autoTitle() {
+        SoundManager.shared.play(.tap)
+        Task {
+            guard let suggested = await analyzer.suggestTitle(
+                entry: entry,
+                mood: mood.rawValue
+            ) else {
+                SoundManager.shared.play(.wrong)
+                return
+            }
+            title = suggested
+            SoundManager.shared.play(.shimmer)
+        }
     }
 
     // MARK: - Auto-tag

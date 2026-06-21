@@ -29,11 +29,16 @@ enum AuthProvider: String, Sendable {
 }
 
 /// A user's public profile. `firstName`/`lastName` may be empty when only the
-/// username could be fetched (names are kept private on the server).
+/// username could be fetched (names are kept private on the server). `bio` is
+/// free-text and may be empty.
 struct ProfileInfo: Sendable {
     let username: String
     let firstName: String
     let lastName: String
+    let bio: String
+    /// When the username was last changed, used to enforce the 30-day cooldown.
+    /// `nil` when it has never been changed since sign-up.
+    let usernameChangedAt: Date?
 }
 
 /// A signed-in account, identified by email (display only).
@@ -57,9 +62,16 @@ protocol AuthBackend: Sendable {
     /// The current user's existing profile, if any (so returning users aren't
     /// asked to choose a username again).
     func fetchProfile() async -> ProfileInfo?
+    /// Update the current user's bio (free-text; may be empty to clear it).
+    func updateBio(_ bio: String) async throws
+    /// Change the current user's username. Throws if it's taken or the server's
+    /// 30-day cooldown rejects it.
+    func updateUsername(_ username: String) async throws
     func sendPasswordReset(email: String) async throws
     func changePassword(currentPassword: String, newPassword: String) async throws
     func signOut() async throws
+    /// Permanently delete the current user's account and all server-side data.
+    func deleteAccount() async throws
 }
 
 enum AuthError: LocalizedError {
@@ -82,6 +94,9 @@ final class AuthService {
     private(set) var username: String?
     private(set) var firstName: String?
     private(set) var lastName: String?
+    private(set) var bio: String?
+    /// When the username was last changed (drives the 30-day cooldown).
+    private(set) var usernameChangedAt: Date?
     var isWorking = false
     var errorMessage: String?
     /// A transient success message (e.g. password-reset confirmation).
@@ -99,6 +114,17 @@ final class AuthService {
     /// Only email/password accounts can change their password in-app; Apple
     /// accounts don't have one to manage.
     var canChangePassword: Bool { isSignedIn && provider == .email }
+
+    /// How long a username must stay put after a change.
+    static let usernameCooldown: TimeInterval = 30 * 24 * 60 * 60
+
+    /// When the 30-day username cooldown ends, or `nil` if the username can be
+    /// changed right now.
+    var usernameCooldownEnds: Date? {
+        guard let changed = usernameChangedAt else { return nil }
+        let ends = changed.addingTimeInterval(Self.usernameCooldown)
+        return ends > Date() ? ends : nil
+    }
 
     init(backend: AuthBackend? = nil) {
         if let backend {
@@ -122,6 +148,8 @@ final class AuthService {
         username = defaults.string(forKey: "userUsername")
         firstName = defaults.string(forKey: "userFirstName")
         lastName = defaults.string(forKey: "userLastName")
+        bio = defaults.string(forKey: "userBio")
+        usernameChangedAt = defaults.object(forKey: "userUsernameChangedAt") as? Date
         // Reinstall / new device: pull the username from the server so an existing
         // account isn't asked to choose one again.
         await hydrateProfileIfNeeded()
@@ -143,6 +171,16 @@ final class AuthService {
         if !remote.lastName.isEmpty {
             lastName = remote.lastName
             defaults.set(remote.lastName, forKey: "userLastName")
+        }
+        // Bio is free-text; an empty value is a valid "no bio yet" state.
+        bio = remote.bio
+        defaults.set(remote.bio, forKey: "userBio")
+        if let changed = remote.usernameChangedAt {
+            usernameChangedAt = changed
+            defaults.set(changed, forKey: "userUsernameChangedAt")
+        } else {
+            usernameChangedAt = nil
+            defaults.removeObject(forKey: "userUsernameChangedAt")
         }
     }
 
@@ -175,6 +213,68 @@ final class AuthService {
             }
             try await backend.createProfile(username: handle, firstName: first, lastName: last)
             persistProfile(username: handle, firstName: first, lastName: last)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Save the dreamer's bio to their profile. Trims whitespace; an empty string
+    /// clears the bio. Returns `true` on success so the caller can dismiss.
+    @discardableResult
+    func updateBio(_ newBio: String) async -> Bool {
+        isWorking = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isWorking = false }
+
+        let trimmed = newBio.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try await backend.updateBio(trimmed)
+            bio = trimmed
+            UserDefaults.standard.set(trimmed, forKey: "userBio")
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Change the dreamer's username. Validates format, the 30-day cooldown, and
+    /// uniqueness before writing. Returns `true` on success (or if unchanged).
+    @discardableResult
+    func updateUsername(_ newUsername: String) async -> Bool {
+        isWorking = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isWorking = false }
+
+        let handle = newUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        // Nothing to do if it didn't actually change.
+        if handle == username { return true }
+
+        guard Self.isValidUsername(handle) else {
+            errorMessage = "Usernames must be 3–20 characters using letters, numbers, or underscores."
+            return false
+        }
+        if usernameCooldownEnds != nil {
+            errorMessage = "You can only change your username once every 30 days."
+            return false
+        }
+        do {
+            guard try await backend.isUsernameAvailable(handle) else {
+                errorMessage = "“\(handle)” is taken. Try another username."
+                return false
+            }
+            try await backend.updateUsername(handle)
+            let now = Date()
+            username = handle
+            usernameChangedAt = now
+            let defaults = UserDefaults.standard
+            defaults.set(handle, forKey: "userUsername")
+            defaults.set(now, forKey: "userUsernameChangedAt")
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -291,6 +391,43 @@ final class AuthService {
             status = .signedOut
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Permanently delete the account and all its server-side data, then drop to
+    /// the signed-out state. Returns `true` on success.
+    @discardableResult
+    func deleteAccount() async -> Bool {
+        isWorking = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isWorking = false }
+        do {
+            try await backend.deleteAccount()
+            clearPersistedProfile()
+            email = nil
+            provider = .unknown
+            username = nil
+            firstName = nil
+            lastName = nil
+            bio = nil
+            usernameChangedAt = nil
+            status = .signedOut
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Drop the locally-cached profile fields after sign-out / deletion.
+    private func clearPersistedProfile() {
+        let defaults = UserDefaults.standard
+        for key in [
+            "userUsername", "userFirstName", "userLastName",
+            "userName", "userBio", "userUsernameChangedAt",
+        ] {
+            defaults.removeObject(forKey: key)
         }
     }
 
@@ -440,6 +577,18 @@ final class MockAuthBackend: AuthBackend {
         nil
     }
 
+    func updateBio(_ bio: String) async throws {
+        UserDefaults.standard.set(bio, forKey: "mockBio")
+    }
+
+    func updateUsername(_ username: String) async throws {
+        var taken = Set(UserDefaults.standard.stringArray(forKey: usernamesKey) ?? [])
+        guard taken.insert(username.lowercased()).inserted else {
+            throw AuthError.message("“\(username)” is taken. Try another username.")
+        }
+        UserDefaults.standard.set(Array(taken), forKey: usernamesKey)
+    }
+
     func sendPasswordReset(email: String) async throws {
         guard email.contains("@"), email.contains(".") else {
             throw AuthError.message("Please enter a valid email address.")
@@ -455,6 +604,12 @@ final class MockAuthBackend: AuthBackend {
     }
 
     func signOut() async throws {
+        UserDefaults.standard.removeObject(forKey: key)
+        UserDefaults.standard.removeObject(forKey: providerKey)
+    }
+
+    func deleteAccount() async throws {
+        // No real backend — just drop the mock's signed-in state.
         UserDefaults.standard.removeObject(forKey: key)
         UserDefaults.standard.removeObject(forKey: providerKey)
     }
@@ -487,9 +642,18 @@ private struct ProfileRow: Codable {
     }
 }
 
-/// Minimal row for username-only reads (names are kept private server-side).
-private struct UsernameRow: Codable {
+/// The publicly-readable profile fields (names are kept private server-side).
+private struct PublicProfileRow: Codable {
     let username: String
+    let bio: String?
+    /// Raw timestamptz text; parsed into a `Date` by the backend.
+    let usernameChangedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case username
+        case bio
+        case usernameChangedAt = "username_changed_at"
+    }
 }
 
 /// Real backend backed by Supabase Auth. Note: exact API names can vary slightly
@@ -597,16 +761,68 @@ final class SupabaseAuthBackend: AuthBackend {
     func fetchProfile() async -> ProfileInfo? {
         guard SupabaseConfig.isConfigured,
               let userID = (try? await client.auth.session)?.user.id else { return nil }
-        let rows: [UsernameRow]? = try? await client
+        let rows: [PublicProfileRow]? = try? await client
             .from("profiles")
-            .select("username")
+            .select("username,bio,username_changed_at")
             .eq("id", value: userID)
             .limit(1)
             .execute()
             .value
-        guard let username = rows?.first?.username else { return nil }
+        guard let row = rows?.first else { return nil }
         // Names stay private on the server; the gate only needs the username.
-        return ProfileInfo(username: username, firstName: "", lastName: "")
+        return ProfileInfo(
+            username: row.username,
+            firstName: "",
+            lastName: "",
+            bio: row.bio ?? "",
+            usernameChangedAt: row.usernameChangedAt.flatMap(Self.parseTimestamp)
+        )
+    }
+
+    func updateBio(_ bio: String) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard let userID = (try? await client.auth.session)?.user.id else {
+            throw AuthError.message("You need to be signed in to edit your profile.")
+        }
+        try await client
+            .from("profiles")
+            .update(["bio": bio])
+            .eq("id", value: userID)
+            .execute()
+    }
+
+    func updateUsername(_ username: String) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard let userID = (try? await client.auth.session)?.user.id else {
+            throw AuthError.message("You need to be signed in to change your username.")
+        }
+        do {
+            try await client
+                .from("profiles")
+                .update(["username": username])
+                .eq("id", value: userID)
+                .execute()
+        } catch {
+            // Either the unique constraint (taken) or the cooldown trigger fired.
+            throw AuthError.message("Couldn't change your username — it may be taken, or you changed it within the last 30 days.")
+        }
+    }
+
+    /// Parse a Postgres `timestamptz` string (e.g. with microsecond precision)
+    /// into a `Date`, tolerating fractional seconds the ISO formatter rejects.
+    private static func parseTimestamp(_ value: String) -> Date? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: value) { return date }
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: value) { return date }
+        // Strip fractional seconds (Postgres emits up to 6 digits) and retry.
+        if let dot = value.range(of: #"\.\d+"#, options: .regularExpression) {
+            var trimmed = value
+            trimmed.removeSubrange(dot)
+            return iso.date(from: trimmed)
+        }
+        return nil
     }
 
     func sendPasswordReset(email: String) async throws {
@@ -636,6 +852,34 @@ final class SupabaseAuthBackend: AuthBackend {
 
     func signOut() async throws {
         try await client.auth.signOut()
+    }
+
+    func deleteAccount() async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard let token = (try? await client.auth.session)?.accessToken else {
+            throw AuthError.message("You need to be signed in to delete your account.")
+        }
+        // Account deletion needs the service-role key, which must never ship in
+        // the app — so it runs in the `delete-account` edge function. We just
+        // call it with the user's access token; it verifies and deletes them.
+        let endpoint = SupabaseConfig.url.appendingPathComponent("functions/v1/delete-account")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            if let payload = try? JSONDecoder().decode([String: String].self, from: data),
+               let message = payload["error"] {
+                throw AuthError.message(message)
+            }
+            throw AuthError.message("Couldn't delete your account. Please try again.")
+        }
+        // The account is gone; clear the now-invalid local session.
+        try? await client.auth.signOut()
     }
 
     private var notConfigured: AuthError {

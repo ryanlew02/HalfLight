@@ -23,6 +23,7 @@ struct HomeView: View {
     /// XP banked from completed weekly quests; updated here so progress still counts
     /// when the dreamer only visits Home.
     @AppStorage("questBankedXP") private var questBankedXP = 0
+    @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
     @State private var isAddingDream = false
     /// Brief "come back tomorrow" confirmation after tapping "couldn't remember".
     @State private var showSkippedMessage = false
@@ -55,6 +56,7 @@ struct HomeView: View {
                         if dreams.count >= 2 {
                             randomDreamTile
                         }
+                        achievementsSection
                     }
 
                     tipsSection
@@ -643,6 +645,77 @@ struct HomeView: View {
                 .opacity(0.7)
         }
         .frame(width: 120, height: 120)
+    }
+
+    // MARK: - Achievements
+
+    /// Metrics every badge is evaluated against, mirroring the Progress screen.
+    private var achievementStats: AchievementStats {
+        AchievementStats(
+            dreams: dreams,
+            journaledDays: journaledDays,
+            lucidSections: lucidSectionsCompleted
+        )
+    }
+
+    /// The two most recently unlocked badges, surfaced as a Home highlight.
+    private var recentAchievements: [Achievement] {
+        AchievementTracker.recentlyUnlocked(for: achievementStats, limit: 2)
+    }
+
+    /// Recent achievements with a tap-through to the full gallery. Hidden until at
+    /// least one badge is unlocked.
+    @ViewBuilder
+    private var achievementsSection: some View {
+        if !recentAchievements.isEmpty {
+            NavigationLink {
+                AchievementsView(stats: achievementStats)
+            } label: {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Eyebrow("Achievements", color: .dreamAccent)
+                        Spacer()
+                        Text("View all →")
+                            .font(.dreamGrotesk(12, .semibold))
+                            .foregroundStyle(Color.dreamPrimary)
+                    }
+                    ForEach(recentAchievements) { achievement in
+                        achievementRow(achievement)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(22)
+                .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.heroRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DreamMetric.heroRadius)
+                        .strokeBorder(Color.dreamText.opacity(0.07), lineWidth: 1)
+                )
+            }
+            .buttonStyle(PressableTileStyle())
+        }
+    }
+
+    private func achievementRow(_ achievement: Achievement) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: achievement.symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(achievement.tint)
+                .frame(width: 44, height: 44)
+                .background(achievement.tint.opacity(0.16), in: .circle)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(achievement.title)
+                    .font(.dreamGrotesk(15, .semibold))
+                    .foregroundStyle(Color.dreamText)
+                Text(achievement.detail)
+                    .font(.dreamGrotesk(12))
+                    .foregroundStyle(Color.dreamSubtle)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Empty state

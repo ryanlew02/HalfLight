@@ -11,11 +11,73 @@ import SwiftUI
 struct AchievementsView: View {
     let stats: AchievementStats
 
+    /// How the gallery is ordered. Persisted so the choice sticks between visits.
+    @AppStorage("achievementsSort") private var sortOption: SortOption = .featured
+
     private let columns = [GridItem(.flexible(), spacing: DreamMetric.md),
                            GridItem(.flexible(), spacing: DreamMetric.md)]
 
+    /// The ways the badge gallery can be ordered.
+    enum SortOption: String, CaseIterable, Identifiable {
+        case featured       // curated ladder order (the default)
+        case recent         // most recently unlocked first
+        case closest        // nearest to unlocking first
+        case reward         // highest XP payout first
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .featured: "Featured"
+            case .recent: "Recently unlocked"
+            case .closest: "Closest to unlock"
+            case .reward: "Highest reward"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .featured: "sparkles"
+            case .recent: "clock.arrow.circlepath"
+            case .closest: "target"
+            case .reward: "star.fill"
+            }
+        }
+    }
+
     private var unlockedCount: Int {
         Achievement.all.filter { $0.isUnlocked(for: stats) }.count
+    }
+
+    /// Stable catalog position per badge, used to break ties deterministically.
+    private var catalogIndex: [String: Int] {
+        Dictionary(uniqueKeysWithValues: Achievement.all.enumerated().map { ($0.element.id, $0.offset) })
+    }
+
+    private var sortedAchievements: [Achievement] {
+        switch sortOption {
+        case .featured:
+            return Achievement.all
+        case .recent:
+            return AchievementTracker.sortedByRecency(for: stats)
+        case .closest:
+            let index = catalogIndex
+            return Achievement.all.sorted { lhs, rhs in
+                let lUnlocked = lhs.isUnlocked(for: stats)
+                let rUnlocked = rhs.isUnlocked(for: stats)
+                // Still-earnable badges first, nearest completion at the top.
+                if lUnlocked != rUnlocked { return !lUnlocked }
+                let lf = lhs.fraction(for: stats), rf = rhs.fraction(for: stats)
+                if lf != rf { return lf > rf }
+                return (index[lhs.id] ?? 0) < (index[rhs.id] ?? 0)
+            }
+        case .reward:
+            let index = catalogIndex
+            return Achievement.all.sorted { lhs, rhs in
+                if lhs.xp != rhs.xp { return lhs.xp > rhs.xp }
+                return (index[lhs.id] ?? 0) < (index[rhs.id] ?? 0)
+            }
+        }
     }
 
     var body: some View {
@@ -26,7 +88,7 @@ struct AchievementsView: View {
                     .foregroundStyle(.secondary)
 
                 LazyVGrid(columns: columns, spacing: DreamMetric.md) {
-                    ForEach(Achievement.all) { achievement in
+                    ForEach(sortedAchievements) { achievement in
                         AchievementBadge(achievement: achievement, stats: stats)
                     }
                 }
@@ -37,6 +99,26 @@ struct AchievementsView: View {
         .background { DreamBackground() }
         .navigationTitle("Achievements")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                sortMenu
+            }
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort by", selection: $sortOption) {
+                ForEach(SortOption.allCases) { option in
+                    Label(option.label, systemImage: option.systemImage).tag(option)
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.dreamPrimary)
+        }
+        .accessibilityLabel("Sort achievements")
     }
 }
 

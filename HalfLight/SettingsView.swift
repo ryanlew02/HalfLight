@@ -271,9 +271,20 @@ struct SoundSettingsView: View {
 struct AccountSettingsView: View {
     @Environment(AuthService.self) private var auth
     @State private var showAuth = false
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         Form {
+            if let error = auth.errorMessage {
+                Section {
+                    Text(error)
+                        .font(.dreamBody(13, .medium))
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .listRowBackground(Color.dreamSurface)
+            }
+
             if auth.isSignedIn {
                 Section {
                     LabeledContent("Email", value: auth.email ?? "—")
@@ -312,6 +323,22 @@ struct AccountSettingsView: View {
                     .disabled(auth.isWorking)
                 }
                 .listRowBackground(Color.dreamSurface)
+
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Delete account")
+                            Spacer()
+                        }
+                    }
+                    .disabled(auth.isWorking)
+                } footer: {
+                    Text("Permanently deletes your account and every dream backed up to it. This can't be undone.")
+                }
+                .listRowBackground(Color.dreamSurface)
             } else {
                 Section {
                     Button {
@@ -332,6 +359,22 @@ struct AccountSettingsView: View {
         .sheet(isPresented: $showAuth) {
             AuthView()
         }
+        .confirmationDialog(
+            "Delete your account?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete account", role: .destructive) {
+                Task {
+                    let ok = await auth.deleteAccount()
+                    SoundManager.shared.play(ok ? .tap : .wrong)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your account and all dreams backed up to it. This can't be undone.")
+        }
+        .onAppear { auth.errorMessage = nil }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -342,7 +385,6 @@ struct AccountSettingsView: View {
 
 struct ChangePasswordView: View {
     @Environment(AuthService.self) private var auth
-    @Environment(\.dismiss) private var dismiss
 
     @State private var current = ""
     @State private var newPassword = ""

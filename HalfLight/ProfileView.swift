@@ -15,20 +15,28 @@ import UIKit
 
 struct ProfileView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(AppRouter.self) private var router
+    @Environment(DreamStore.self) private var store
     @Query private var dreams: [Dream]
     @AppStorage("userName") private var userName = "Dreamer"
+    @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
+    @AppStorage("questBankedXP") private var questBankedXP = 0
     /// The dreamer's profile photo, stored as a cropped JPEG.
     @AppStorage("profilePhoto") private var profilePhotoData: Data?
     @State private var photoItem: PhotosPickerItem?
     /// The just-picked photo awaiting crop, presented in `PhotoCropView`.
     @State private var cropItem: CropItem?
     @State private var showAuth = false
+    /// Drives the push into the Progress screen (from the card or the Home shortcut).
+    @State private var showingProgress = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
+                    bioCard
+                    progressCard
                     accountCard
                     themesCard
                 }
@@ -37,6 +45,11 @@ struct ProfileView: View {
             .tabBarClearance()
             .background { DreamBackground() }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showingProgress) {
+                StatsView()
+            }
+            .onAppear { consumeProgressIntent() }
+            .onChange(of: router.openProgress) { _, _ in consumeProgressIntent() }
             .sheet(isPresented: $showAuth) {
                 AuthView()
             }
@@ -58,22 +71,132 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(userName)
                     .font(.dreamDisplay(28))
+                if let username = auth.username, !username.isEmpty {
+                    Text("@\(username)")
+                        .font(.dreamBody(14, .semibold))
+                        .foregroundStyle(Color.dreamPrimary)
+                }
                 Text(auth.isSignedIn ? (auth.email ?? "Signed in") : "Not signed in")
                     .font(.dreamBody(13, .medium))
                     .foregroundStyle(.secondary)
+
+                rankBadge
+                    .padding(.top, 6)
             }
 
             Spacer()
 
-            NavigationLink {
-                SettingsView()
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.title2)
-                    .foregroundStyle(Color.dreamPrimary)
+            HStack(spacing: DreamMetric.lg) {
+                if auth.isSignedIn {
+                    NavigationLink {
+                        EditProfileView()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.title2)
+                            .foregroundStyle(Color.dreamPrimary)
+                    }
+                    .accessibilityLabel("Edit profile")
+                }
+
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.dreamPrimary)
+                }
+                .accessibilityLabel("Settings")
             }
-            .accessibilityLabel("Settings")
         }
+    }
+
+    // MARK: - Bio
+
+    /// The dreamer's bio, shown only once they've written one. Editing lives in
+    /// the header's Edit Profile icon.
+    @ViewBuilder
+    private var bioCard: some View {
+        if let bio = auth.bio, !bio.isEmpty {
+            Text(bio)
+                .font(.dreamBody(15))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(DreamMetric.lg)
+                .dreamCard()
+        }
+    }
+
+    // MARK: - Progress
+
+    /// The rank shown here always matches the Progress screen — both go through
+    /// `DreamStore.totalXP`.
+    private var totalXP: Int {
+        store.totalXP(
+            dreams: dreams,
+            lucidSections: lucidSectionsCompleted,
+            questBankedXP: questBankedXP
+        )
+    }
+
+    private var level: Int { DreamProgression.level(forXP: totalXP) }
+    private var rank: DreamProgression.Rank { DreamProgression.rank(forLevel: level) }
+
+    /// A compact rank badge for the profile header.
+    private var rankBadge: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "moon.stars.fill")
+                .font(.system(size: 10, weight: .bold))
+            Text(rank.name)
+                .font(.dreamBody(12, .bold))
+        }
+        .foregroundStyle(Color.dreamPrimary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Color.dreamPrimary.opacity(0.14), in: .capsule)
+    }
+
+    /// Entry point to the full Progress screen (level, quests, streak, badges,
+    /// activity), which now lives under the Profile tab instead of its own.
+    private var progressCard: some View {
+        Button {
+            SoundManager.shared.play(.tap)
+            showingProgress = true
+        } label: {
+            HStack(spacing: DreamMetric.md) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.dreamPrimary)
+                    .frame(width: 44, height: 44)
+                    .background(Color.dreamPrimary.opacity(0.12), in: .circle)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Progress & Achievements")
+                        .font(.dreamCardTitle)
+                    Text("Level \(level) · \(rank.name)")
+                        .font(.dreamSubtext)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.dreamText.opacity(0.4))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DreamMetric.lg)
+            .dreamCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Honor a pending request (e.g. from the Home quests shortcut) to open the
+    /// Progress screen, then clear it. Deferred so the push lands cleanly.
+    private func consumeProgressIntent() {
+        guard router.openProgress else { return }
+        router.openProgress = false
+        DispatchQueue.main.async { showingProgress = true }
     }
 
     // MARK: - Profile photo
@@ -415,12 +538,16 @@ struct ThemeDreamsView: View {
 #Preview("Light") {
     ProfileView()
         .modelContainer(PreviewData.container)
+        .environment(PreviewData.store)
+        .environment(AppRouter())
         .environment(AuthService())
 }
 
 #Preview("Dark") {
     ProfileView()
         .modelContainer(PreviewData.container)
+        .environment(PreviewData.store)
+        .environment(AppRouter())
         .environment(AuthService())
         .preferredColorScheme(.dark)
 }

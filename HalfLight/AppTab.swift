@@ -11,7 +11,7 @@ enum AppTab: CaseIterable, Identifiable {
     case home
     case lucid
     case journal
-    case progress
+    case feed
     case profile
 
     var id: Self { self }
@@ -21,7 +21,7 @@ enum AppTab: CaseIterable, Identifiable {
         case .home: "Home"
         case .lucid: "Lucid"
         case .journal: "Journal"
-        case .progress: "Progress"
+        case .feed: "Feed"
         case .profile: "Profile"
         }
     }
@@ -31,7 +31,7 @@ enum AppTab: CaseIterable, Identifiable {
         case .home: "house.fill"
         case .lucid: "eye.fill"
         case .journal: "book.fill"
-        case .progress: "chart.bar.fill"
+        case .feed: "person.2.fill"
         case .profile: "person.crop.circle.fill"
         }
     }

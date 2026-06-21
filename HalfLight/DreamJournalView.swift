@@ -13,6 +13,8 @@ struct DreamJournalView: View {
     @Environment(DreamStore.self) private var store
     @Environment(AppRouter.self) private var router
     @State private var isAddingDream = false
+    /// The dream being edited via the long-press menu, presented in `AddDreamView`.
+    @State private var editingDream: Dream?
     @State private var searchText = ""
     @State private var sortOption: SortOption = .newest
     /// Moods the dreamer is filtering to. Empty means "all moods".
@@ -105,6 +107,13 @@ struct DreamJournalView: View {
                             headline: "Dream Logged"
                         )
                     }
+                }
+            }
+            .fullScreenCover(item: $editingDream) { dream in
+                AddDreamView(existingDream: dream) { draft in
+                    store.update(dream, with: draft)
+                } onDelete: {
+                    store.delete(dream)
                 }
             }
         }
@@ -372,6 +381,19 @@ struct DreamJournalView: View {
                     .opacity(0)
 
                     DreamCard(dream: dream)
+                }
+                .contextMenu {
+                    Button {
+                        SoundManager.shared.play(.tap)
+                        editingDream = dream
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        store.delete(dream)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)

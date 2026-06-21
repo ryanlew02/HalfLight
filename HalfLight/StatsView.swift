@@ -2,7 +2,8 @@
 //  StatsView.swift
 //  HalfLight
 //
-//  Simple insights computed from the dream library.
+//  The "Progress" screen, pushed from the Profile tab: level/XP, weekly quests,
+//  streak, achievements, and a per-year activity grid over the dream library.
 //
 
 import SwiftUI
@@ -21,36 +22,36 @@ struct StatsView: View {
     @State private var medallionStripWidth: CGFloat = 0
 
     var body: some View {
-        NavigationStack {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
-                        Text("Progress")
-                            .font(.dreamTitle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        progressSection
-                        bonusBanner
-                        questsSection
-                            .id(Self.questsAnchor)
-                        streakSection
-                        achievementsSection
-                        if dreams.isEmpty {
-                            emptyHint
-                        } else {
-                            activitySection
-                        }
+        // Pushed as a destination from the Profile tab, so it uses that
+        // NavigationStack rather than wrapping its own.
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    progressSection
+                    bonusBanner
+                    questsSection
+                        .id(Self.questsAnchor)
+                    streakSection
+                    achievementsSection
+                    if dreams.isEmpty {
+                        emptyHint
+                    } else {
+                        activitySection
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 20)
                 }
-                .tabBarClearance()
-                .background { DreamBackground() }
-                .toolbar(.hidden, for: .navigationBar)
-                .onAppear { consumeQuestScrollIntent(proxy) }
-                .onChange(of: router.scrollToQuests) { _, _ in
-                    consumeQuestScrollIntent(proxy)
-                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 20)
+            }
+            .tabBarClearance()
+            .background { DreamBackground() }
+            .navigationTitle("Progress")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .onAppear { consumeQuestScrollIntent(proxy) }
+            .onChange(of: router.scrollToQuests) { _, _ in
+                consumeQuestScrollIntent(proxy)
             }
         }
     }
@@ -73,30 +74,19 @@ struct StatsView: View {
 
     // MARK: - Progress (XP & level)
 
-    /// The lucid count is a placeholder until lucid progress is persisted.
+    /// Completed lucid lessons, kept in sync by `LucidProgress`; folded into XP.
     @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
 
     /// XP banked from completed weekly quests, accumulated across weeks. Folded
     /// into `totalXP` so quests level the dreamer up like everything else.
     @AppStorage("questBankedXP") private var questBankedXP = 0
 
-    /// Distinct days that have earned journaling XP: a dream was recorded, the day
-    /// was marked "can't remember", or a since-deleted dream once credited it.
-    /// Set-union caps each day at one credit and keeps XP from changing on delete.
-    private var xpEarningDays: Set<Date> {
-        let calendar = Calendar.current
-        let dreamDays = Set(dreams.map { calendar.startOfDay(for: $0.date) })
-        return dreamDays
-            .union(store.skippedDays)
-            .union(store.creditedDays)
-    }
-
     private var totalXP: Int {
-        DreamProgression.totalXP(
-            journaledDays: xpEarningDays.count,
+        store.totalXP(
+            dreams: dreams,
             lucidSections: lucidSectionsCompleted,
-            achievementXP: Achievement.unlockedXP(for: achievementStats)
-        ) + questBankedXP
+            questBankedXP: questBankedXP
+        )
     }
     private var level: Int { DreamProgression.level(forXP: totalXP) }
     private var xpIntoLevel: Int { DreamProgression.xpIntoLevel(forXP: totalXP) }
@@ -583,16 +573,20 @@ private struct SegmentedProgressBar: View {
 }
 
 #Preview("Light") {
-    StatsView()
-        .modelContainer(PreviewData.container)
-        .environment(PreviewData.store)
-        .environment(AppRouter())
+    NavigationStack {
+        StatsView()
+    }
+    .modelContainer(PreviewData.container)
+    .environment(PreviewData.store)
+    .environment(AppRouter())
 }
 
 #Preview("Dark") {
-    StatsView()
-        .modelContainer(PreviewData.container)
-        .environment(PreviewData.store)
-        .environment(AppRouter())
-        .preferredColorScheme(.dark)
+    NavigationStack {
+        StatsView()
+    }
+    .modelContainer(PreviewData.container)
+    .environment(PreviewData.store)
+    .environment(AppRouter())
+    .preferredColorScheme(.dark)
 }
