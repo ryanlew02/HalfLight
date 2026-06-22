@@ -170,3 +170,4 @@ struct MainTabView: View {
         .environment(AuthService())
         .preferredColorScheme(.dark)
 }
+

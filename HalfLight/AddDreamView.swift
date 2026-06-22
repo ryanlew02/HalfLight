@@ -23,6 +23,10 @@ struct AddDreamView: View {
     @State private var entry: String
     @State private var mood: Dream.Mood
     @State private var tagText: String
+    /// Visibility — private by default; public lets the dream be shared to the feed.
+    @State private var isPublic: Bool
+    /// Whether the dreamer was lucid — non-lucid by default.
+    @State private var isLucid: Bool
 
     // AI analysis captured in-form, so a dream can be interpreted before it's saved.
     @State private var aiCategory: String?
@@ -46,6 +50,8 @@ struct AddDreamView: View {
         _entry = State(initialValue: existingDream?.entry ?? "")
         _mood = State(initialValue: existingDream?.mood ?? .vivid)
         _tagText = State(initialValue: existingDream?.tags.joined(separator: ", ") ?? "")
+        _isPublic = State(initialValue: existingDream?.isPublic ?? false)
+        _isLucid = State(initialValue: existingDream?.isLucid ?? false)
         _aiCategory = State(initialValue: existingDream?.aiCategory)
         _aiMeaning = State(initialValue: existingDream?.aiMeaning)
         _aiThemes = State(initialValue: existingDream?.aiThemes ?? [])
@@ -102,6 +108,42 @@ struct AddDreamView: View {
                     #if os(iOS)
                     .pickerStyle(.navigationLink)
                     #endif
+                }
+                .listRowBackground(Color.dreamSurface)
+
+                Section("Visibility") {
+                    Picker("Visibility", selection: $isPublic) {
+                        Label("Private", systemImage: "lock.fill").tag(false)
+                        Label("Public", systemImage: "globe").tag(true)
+                    }
+                    #if os(iOS)
+                    .pickerStyle(.segmented)
+                    #endif
+                    .labelsHidden()
+
+                    Text(isPublic
+                         ? "This dream is shared to the feed for others to see."
+                         : "Only you can see this dream.")
+                        .font(.dreamCaption)
+                        .foregroundStyle(.secondary)
+                }
+                .listRowBackground(Color.dreamSurface)
+
+                Section("Lucidity") {
+                    Picker("Lucidity", selection: $isLucid) {
+                        Text("Non-lucid").tag(false)
+                        Text("Lucid").tag(true)
+                    }
+                    #if os(iOS)
+                    .pickerStyle(.segmented)
+                    #endif
+                    .labelsHidden()
+
+                    Text(isLucid
+                         ? "You were aware you were dreaming."
+                         : "You weren't aware you were dreaming.")
+                        .font(.dreamCaption)
+                        .foregroundStyle(.secondary)
                 }
                 .listRowBackground(Color.dreamSurface)
 
@@ -193,6 +235,8 @@ struct AddDreamView: View {
             entry: entry.trimmingCharacters(in: .whitespacesAndNewlines),
             mood: mood,
             tags: tags,
+            isPublic: isPublic,
+            isLucid: isLucid,
             aiCategory: aiMeaning == nil ? nil : aiCategory,
             aiMeaning: aiMeaning,
             aiThemes: aiMeaning == nil ? [] : aiThemes

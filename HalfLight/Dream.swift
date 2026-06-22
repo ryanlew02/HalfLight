@@ -24,6 +24,12 @@ final class Dream {
     /// AI-generated themes/symbols extracted from the dream.
     var tags: [String]
 
+    /// Whether the dream may be shared publicly (e.g. to the feed). Defaults to
+    /// private; the default keeps existing dreams private after a lightweight migration.
+    var isPublic: Bool = false
+    /// Whether the dreamer was lucid (aware they were dreaming). Defaults to non-lucid.
+    var isLucid: Bool = false
+
     // MARK: AI analysis (populated by the "Analyze with AI" action)
 
     /// AI-assigned category for the dream (e.g. "Nightmare", "Symbolic"); `nil` until analyzed.
@@ -52,6 +58,8 @@ final class Dream {
         date: Date,
         mood: Mood,
         tags: [String] = [],
+        isPublic: Bool = false,
+        isLucid: Bool = false,
         aiCategory: String? = nil,
         aiMeaning: String? = nil,
         aiThemes: [String] = [],
@@ -66,6 +74,8 @@ final class Dream {
         self.date = date
         self.mood = mood
         self.tags = tags
+        self.isPublic = isPublic
+        self.isLucid = isLucid
         self.aiCategory = aiCategory
         self.aiMeaning = aiMeaning
         self.aiThemes = aiThemes

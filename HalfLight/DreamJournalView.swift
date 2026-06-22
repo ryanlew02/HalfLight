@@ -449,6 +449,13 @@ struct DreamCard: View {
 
                 Spacer()
 
+                if dream.isPublic {
+                    Image(systemName: "globe")
+                        .font(.dreamBody(12, .semibold))
+                        .foregroundStyle(Color.dreamPrimary)
+                        .accessibilityLabel("Shared to feed")
+                }
+
                 Text(dream.date, format: .dateTime.month().day().hour().minute())
                     .font(.dreamBody(12, .medium))
                     .foregroundStyle(.secondary)

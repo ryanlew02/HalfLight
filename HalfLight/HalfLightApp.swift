@@ -21,7 +21,7 @@ struct HalfLightApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: [Dream.self, DeletedDream.self])
+        .modelContainer(for: [Dream.self, DeletedDream.self, FeedPost.self, Follow.self])
     }
 }
 
@@ -55,6 +55,11 @@ private struct RootView: View {
         .task {
             if store == nil {
                 store = makeStore()
+                // Ensure dreams already marked public have a feed post (and drop
+                // any left behind by now-private dreams), then bring each post's
+                // author snapshot up to date with the current profile.
+                store?.backfillFeedPosts()
+                store?.refreshFeedAuthors()
             }
             // Restoring may flip auth to signed-in, which triggers a reconcile
             // via onChange below.

@@ -311,6 +311,16 @@ struct HomeView: View {
                         .font(.dreamMono(11))
                         .foregroundStyle(Color.dreamSubtle)
                 }
+                if dream.isPublic {
+                    metaColumn("Shared") {
+                        HStack(spacing: 5) {
+                            Image(systemName: "globe")
+                            Text("Feed")
+                        }
+                        .font(.dreamMono(11))
+                        .foregroundStyle(Color.dreamPrimary)
+                    }
+                }
             }
             .padding(.top, 16)
 

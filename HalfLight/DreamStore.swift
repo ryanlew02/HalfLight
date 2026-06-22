@@ -16,6 +16,10 @@ struct DreamDraft {
     var entry: String
     var mood: Dream.Mood
     var tags: [String]
+    /// Whether the dream may be shared publicly. Defaults to private.
+    var isPublic: Bool = false
+    /// Whether the dreamer was lucid. Defaults to non-lucid.
+    var isLucid: Bool = false
     /// Optional AI analysis generated in the form before saving. Carried through so
     /// a dream can be created already-interpreted, and so editing preserves an
     /// existing interpretation (or replaces it when re-analyzed).
@@ -79,11 +83,14 @@ final class DreamStore {
             date: .now,
             mood: draft.mood,
             tags: draft.tags,
+            isPublic: draft.isPublic,
+            isLucid: draft.isLucid,
             aiCategory: draft.aiCategory,
             aiMeaning: draft.aiMeaning,
             aiThemes: draft.aiThemes
         )
         context.insert(dream)
+        syncFeedPost(for: dream)
         save()
         pushRemote(dream)
         return dream
@@ -95,11 +102,14 @@ final class DreamStore {
         dream.entry = draft.entry
         dream.mood = draft.mood
         dream.tags = draft.tags
+        dream.isPublic = draft.isPublic
+        dream.isLucid = draft.isLucid
         dream.aiCategory = draft.aiCategory
         dream.aiMeaning = draft.aiMeaning
         dream.aiThemes = draft.aiThemes
         dream.updatedAt = .now
         dream.needsUpload = true
+        syncFeedPost(for: dream)
         save()
         pushRemote(dream)
     }
@@ -125,6 +135,11 @@ final class DreamStore {
         // the dream that earned it must not claw the XP back.
         DayLog.journalCredit.record(dream.date)
         creditedDays = DayLog.journalCredit.days()
+        // Pull its feed post too, so a shared dream can't linger on the feed.
+        let postDescriptor = FetchDescriptor<FeedPost>(predicate: #Predicate<FeedPost> { $0.dreamID == id })
+        for post in (try? context.fetch(postDescriptor)) ?? [] {
+            context.delete(post)
+        }
         context.delete(dream)
         // Only tombstone when a backend is in play; local-only stores can't be
         // resurrected by a sync, so there's nothing to guard against.
@@ -241,6 +256,77 @@ final class DreamStore {
         save()
     }
 
+    // MARK: - Feed
+
+    /// Keep a dream's feed presence in step with its visibility: a public dream
+    /// has exactly one `FeedPost` (created when it's first made public, its
+    /// snapshot refreshed on later edits); a private dream has none. The author's
+    /// handle / name / photo are snapshotted from the signed-in profile so the
+    /// card renders without a server round-trip (mirroring the future feed sync).
+    private func syncFeedPost(for dream: Dream) {
+        let dreamID = dream.id
+        let descriptor = FetchDescriptor<FeedPost>(predicate: #Predicate<FeedPost> { $0.dreamID == dreamID })
+        let existing = (try? context.fetch(descriptor)) ?? []
+
+        guard dream.isPublic else {
+            existing.forEach(context.delete)
+            return
+        }
+
+        if let post = existing.first {
+            // Already shared — keep the snapshot in step with the dream's edits.
+            post.title = dream.title
+            post.dreamDescription = dream.entry
+        } else {
+            let author = currentAuthor()
+            context.insert(FeedPost(
+                dreamID: dream.id,
+                authorUsername: author.username,
+                authorName: author.name,
+                authorPhoto: author.photo,
+                title: dream.title,
+                dreamDescription: dream.entry
+            ))
+        }
+    }
+
+    /// Reconcile every dream's feed presence with its visibility in one pass.
+    /// Called at launch so dreams already marked public — including any from
+    /// before visibility drove the feed — get their post created (and any stale
+    /// posts for now-private dreams cleaned up).
+    func backfillFeedPosts() {
+        let dreams = (try? context.fetch(FetchDescriptor<Dream>())) ?? []
+        dreams.forEach(syncFeedPost)
+        save()
+    }
+
+    /// Re-snapshot every feed post's author (photo / name / handle) from the
+    /// current profile, so editing your profile shows up on dreams you've already
+    /// shared. All posts belong to the signed-in dreamer until a multi-user
+    /// backend exists, so this is where a periodic remote profile sync will live.
+    /// Cheap and idempotent — only writes when something actually changed.
+    func refreshFeedAuthors() {
+        let posts = (try? context.fetch(FetchDescriptor<FeedPost>())) ?? []
+        guard !posts.isEmpty else { return }
+        let author = currentAuthor()
+        var changed = false
+        for post in posts {
+            if post.authorName != author.name { post.authorName = author.name; changed = true }
+            if post.authorUsername != author.username { post.authorUsername = author.username; changed = true }
+            if post.authorPhoto != author.photo { post.authorPhoto = author.photo; changed = true }
+        }
+        if changed { save() }
+    }
+
+    /// The signed-in dreamer's author snapshot, read from the profile defaults that
+    /// the Profile screen writes (`userName`, `userUsername`, `profilePhoto`).
+    private func currentAuthor() -> (name: String, username: String, photo: Data?) {
+        let defaults = UserDefaults.standard
+        let name = defaults.string(forKey: "userName") ?? "Dreamer"
+        let username = defaults.string(forKey: "userUsername") ?? name.lowercased()
+        return (name, username, defaults.data(forKey: "profilePhoto"))
+    }
+
     // MARK: - Internals
 
     private func save() {
@@ -313,7 +399,7 @@ enum PreviewData {
     /// An in-memory container seeded with samples, for SwiftUI previews.
     static let container: ModelContainer = {
         let container = try! ModelContainer(
-            for: Dream.self, DeletedDream.self,
+            for: Dream.self, DeletedDream.self, FeedPost.self, Follow.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         for dream in Dream.makeSamples() {

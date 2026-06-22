@@ -42,9 +42,15 @@ struct DreamDetailView: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Edit") {
-                    SoundManager.shared.play(.tap)
-                    isEditing = true
+                Menu {
+                    Button {
+                        SoundManager.shared.play(.tap)
+                        isEditing = true
+                    } label: {
+                        Label("Edit", systemImage: "square.and.pencil")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
@@ -263,6 +269,7 @@ private struct FlowLayout: Layout {
     }
     .modelContainer(PreviewData.container)
     .environment(PreviewData.store)
+    .environment(AuthService())
 }
 
 #Preview("Dark") {
@@ -271,5 +278,6 @@ private struct FlowLayout: Layout {
     }
     .modelContainer(PreviewData.container)
     .environment(PreviewData.store)
+    .environment(AuthService())
     .preferredColorScheme(.dark)
 }
