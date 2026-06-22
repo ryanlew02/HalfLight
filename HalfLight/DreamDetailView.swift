@@ -10,15 +10,26 @@ import SwiftData
 
 struct DreamDetailView: View {
     let dream: Dream
+    /// The author, when this dream was opened from the feed — drives the tappable
+    /// author header. `nil` from the journal/profile (it's your own dream there).
+    var feedAuthor: FeedAuthor? = nil
+    /// When the dream was posted to the feed, shown beside the author's handle.
+    var postedAt: Date? = nil
 
     @Environment(DreamStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var isEditing = false
     @State private var analyzer = DreamAnalyzer()
+    /// The author profile to push when the header is tapped.
+    @State private var profileToOpen: FeedAuthor?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if feedAuthor != nil {
+                    authorHeader
+                }
+
                 header
 
                 Text(dream.entry)
@@ -40,6 +51,9 @@ struct DreamDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .navigationDestination(item: $profileToOpen) { author in
+            PublicProfileView(author: author)
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -61,6 +75,50 @@ struct DreamDetailView: View {
                 dismiss()
                 store.delete(dream)
             }
+        }
+    }
+
+    // MARK: - Author (feed only)
+
+    /// Tappable author card: photo, name, @handle, and when it was posted. The
+    /// whole row opens the author's profile.
+    @ViewBuilder
+    private var authorHeader: some View {
+        if let feedAuthor {
+            Button {
+                SoundManager.shared.play(.tap)
+                profileToOpen = feedAuthor
+            } label: {
+                HStack(spacing: DreamMetric.md) {
+                    FeedAvatar(photoData: feedAuthor.photo, name: feedAuthor.name, size: 44)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(feedAuthor.name)
+                            .font(.dreamBody(15, .semibold))
+                            .foregroundStyle(Color.dreamText)
+                        HStack(spacing: 4) {
+                            Text("@\(feedAuthor.username)")
+                                .foregroundStyle(Color.dreamPrimary)
+                            if let postedAt {
+                                Text("·")
+                                    .foregroundStyle(.secondary)
+                                Text(postedAt, format: .relative(presentation: .named))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .font(.dreamCaption)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.dreamCaption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(DreamMetric.md)
+                .dreamCard()
+            }
+            .buttonStyle(.plain)
         }
     }
 

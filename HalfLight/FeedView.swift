@@ -26,10 +26,12 @@ struct FeedView: View {
     /// tags and tapping it can open the full dream. (The feed only holds the
     /// dreamer's own shared dreams for now, so the source dream is always local.)
     @Query private var dreams: [Dream]
-    /// The dream a tapped card is navigating to.
-    @State private var selectedDream: Dream?
+    /// The dream (plus its author) a tapped card is navigating to.
+    @State private var selectedRoute: FeedDreamRoute?
     /// The author whose profile a tapped header is navigating to.
     @State private var selectedProfile: FeedAuthor?
+    /// The post whose comments are open in a sheet.
+    @State private var commentsPost: FeedPost?
     /// The ranked order, captured as ids so the feed doesn't reshuffle mid-scroll
     /// when a like or impression lands; recomputed when the post set changes or the
     /// feed reappears. The view always renders live posts in this order.
@@ -63,11 +65,11 @@ struct FeedView: View {
     }
 
     /// Count one impression per post per session — the denominator of the
-    /// like-per-view conversion rate the ranker reads as virality.
+    /// like-per-view conversion rate the ranker reads as virality. Goes through the
+    /// store so it's mirrored to Supabase.
     private func recordImpression(_ post: FeedPost) {
         guard impressed.insert(post.id).inserted else { return }
-        post.viewCount += 1
-        try? modelContext.save()
+        store.recordView(post)
     }
 
     var body: some View {
@@ -85,13 +87,17 @@ struct FeedView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .navigationDestination(item: $selectedDream) { dream in
-                DreamDetailView(dream: dream)
+            .navigationDestination(item: $selectedRoute) { route in
+                DreamDetailView(dream: route.dream, feedAuthor: route.author, postedAt: route.postedAt)
             }
             .navigationDestination(item: $selectedProfile) { author in
                 PublicProfileView(author: author)
             }
+            .sheet(item: $commentsPost) { post in
+                CommentsView(post: post)
+            }
             .task {
+                store.reconcileFeed()
                 store.refreshFeedAuthors()
                 refreshRanking()
             }
@@ -116,7 +122,19 @@ struct FeedView: View {
                     FeedPostCard(
                         post: post,
                         dream: dreamsByID[post.dreamID],
-                        onOpen: { selectedDream = dreamsByID[post.dreamID] },
+                        onOpen: {
+                            if let dream = dreamsByID[post.dreamID] {
+                                selectedRoute = FeedDreamRoute(
+                                    dream: dream,
+                                    author: FeedAuthor(
+                                        username: post.authorUsername,
+                                        name: post.authorName,
+                                        photo: post.authorPhoto
+                                    ),
+                                    postedAt: post.createdAt
+                                )
+                            }
+                        },
                         onOpenProfile: {
                             selectedProfile = FeedAuthor(
                                 username: post.authorUsername,
@@ -125,6 +143,7 @@ struct FeedView: View {
                             )
                         },
                         onToggleLike: { toggleLike(post) },
+                        onComment: { commentsPost = post },
                         onImpression: { recordImpression(post) }
                     )
                     .padding(.horizontal, DreamMetric.screen)
@@ -154,13 +173,20 @@ struct FeedView: View {
         .padding(DreamMetric.xl)
     }
 
-    /// Flip the like state and keep the count in step. Local-only for now; a real
-    /// backend will own the count and reconcile across users.
+    /// Flip the like state (local + Supabase) via the store.
     private func toggleLike(_ post: FeedPost) {
-        post.isLiked.toggle()
-        post.likeCount = max(0, post.likeCount + (post.isLiked ? 1 : -1))
-        try? modelContext.save()
+        store.toggleLike(post)
     }
+}
+
+/// A feed tap target: the dream to open plus the author snapshot and post date to
+/// show in its detail header. Identified by the dream so the push is stable.
+struct FeedDreamRoute: Identifiable, Hashable {
+    let dream: Dream
+    let author: FeedAuthor
+    let postedAt: Date
+
+    var id: UUID { dream.id }
 }
 
 #Preview("Light") {

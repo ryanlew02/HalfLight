@@ -51,6 +51,8 @@ final class DreamStore {
     private let context: ModelContext
     /// Remote backup, or `nil` to stay local-only (previews, package absent).
     private let sync: DreamSyncing?
+    /// Shared social feed backend, or `nil` to keep the feed local-only.
+    private let feedSync: FeedSyncing?
 
     /// Days marked "can't remember", and days whose journaling XP must outlive a
     /// deleted dream. Held here — rather than read straight from `DayLog` in the
@@ -59,9 +61,10 @@ final class DreamStore {
     private(set) var skippedDays: Set<Date> = DayLog.skipped.days()
     private(set) var creditedDays: Set<Date> = DayLog.journalCredit.days()
 
-    init(context: ModelContext, sync: DreamSyncing? = nil) {
+    init(context: ModelContext, sync: DreamSyncing? = nil, feedSync: FeedSyncing? = nil) {
         self.context = context
         self.sync = sync
+        self.feedSync = feedSync
     }
 
     // MARK: - Mutations
@@ -270,6 +273,7 @@ final class DreamStore {
 
         guard dream.isPublic else {
             existing.forEach(context.delete)
+            unpublishRemote(dreamID: dreamID)
             return
         }
 
@@ -277,16 +281,19 @@ final class DreamStore {
             // Already shared — keep the snapshot in step with the dream's edits.
             post.title = dream.title
             post.dreamDescription = dream.entry
+            publishRemote(post)
         } else {
             let author = currentAuthor()
-            context.insert(FeedPost(
+            let post = FeedPost(
                 dreamID: dream.id,
                 authorUsername: author.username,
                 authorName: author.name,
                 authorPhoto: author.photo,
                 title: dream.title,
                 dreamDescription: dream.entry
-            ))
+            )
+            context.insert(post)
+            publishRemote(post)
         }
     }
 
@@ -325,6 +332,220 @@ final class DreamStore {
         let name = defaults.string(forKey: "userName") ?? "Dreamer"
         let username = defaults.string(forKey: "userUsername") ?? name.lowercased()
         return (name, username, defaults.data(forKey: "profilePhoto"))
+    }
+
+    // MARK: - Feed engagement (local-first, pushed to Supabase best-effort)
+
+    /// Flip a post's like, keep the local count in step, and mirror to the server.
+    func toggleLike(_ post: FeedPost) {
+        post.isLiked.toggle()
+        post.likeCount = max(0, post.likeCount + (post.isLiked ? 1 : -1))
+        save()
+        guard let feedSync else { return }
+        let id = post.id, liked = post.isLiked
+        Task { try? await feedSync.setLike(postID: id, liked: liked) }
+    }
+
+    /// Count one local impression for a post and record it remotely (the server
+    /// dedupes per user, so a repeat view is a no-op there).
+    func recordView(_ post: FeedPost) {
+        post.viewCount += 1
+        save()
+        guard let feedSync else { return }
+        let id = post.id
+        Task { try? await feedSync.recordView(postID: id) }
+    }
+
+    /// Add a comment locally and push it; bumps the post's comment count.
+    @discardableResult
+    func addComment(to post: FeedPost, text: String) -> Comment {
+        let author = currentAuthor()
+        let comment = Comment(
+            postID: post.id,
+            authorUsername: author.username,
+            authorName: author.name,
+            authorPhoto: author.photo,
+            text: text
+        )
+        context.insert(comment)
+        post.commentCount += 1
+        save()
+
+        if let feedSync {
+            let id = comment.id, postID = post.id, text = comment.text
+            let username = author.username, name = author.name
+            Task {
+                guard let uid = await feedSync.currentUserID() else { return }
+                try? await feedSync.addComment(FeedCommentRecord(
+                    id: id, postID: postID, authorID: uid,
+                    authorUsername: username, authorName: name,
+                    text: text, createdAt: .now
+                ))
+            }
+        }
+        return comment
+    }
+
+    func deleteComment(_ comment: Comment, on post: FeedPost) {
+        let id = comment.id
+        context.delete(comment)
+        post.commentCount = max(0, post.commentCount - 1)
+        save()
+        guard let feedSync else { return }
+        Task { try? await feedSync.deleteComment(id: id) }
+    }
+
+    /// Follow / unfollow a dreamer locally and remotely.
+    func setFollow(username: String, following: Bool) {
+        let descriptor = FetchDescriptor<Follow>(predicate: #Predicate<Follow> { $0.username == username })
+        let existing = (try? context.fetch(descriptor)) ?? []
+        if following, existing.isEmpty {
+            context.insert(Follow(username: username))
+        } else if !following {
+            existing.forEach(context.delete)
+        }
+        save()
+        guard let feedSync else { return }
+        Task {
+            if following { try? await feedSync.follow(username: username) }
+            else { try? await feedSync.unfollow(username: username) }
+        }
+    }
+
+    // MARK: - Feed remote push / reconcile
+
+    private func publishRemote(_ post: FeedPost) {
+        guard let feedSync else { return }
+        let id = post.id, dreamID = post.dreamID
+        let username = post.authorUsername, name = post.authorName
+        let title = post.title, description = post.dreamDescription, created = post.createdAt
+        Task {
+            guard let uid = await feedSync.currentUserID() else { return }
+            try? await feedSync.publish(FeedPostUpsert(
+                id: id, dreamID: dreamID, authorID: uid,
+                authorUsername: username, authorName: name,
+                title: title, dreamDescription: description, createdAt: created
+            ))
+        }
+    }
+
+    private func unpublishRemote(dreamID: UUID) {
+        guard let feedSync else { return }
+        Task { try? await feedSync.unpublish(dreamID: dreamID) }
+    }
+
+    /// Pull the shared feed into the local SwiftData cache so the existing
+    /// `@Query`-driven feed UI shows everyone's posts. Server counts win; the
+    /// local author photo is preserved for our own posts. Safe to call on launch /
+    /// sign-in and when the feed appears.
+    func reconcileFeed() {
+        guard let feedSync else { return }
+        Task {
+            async let remotePosts = (try? await feedSync.fetchFeed(limit: 200)) ?? []
+            async let likedIDs = (try? await feedSync.likedPostIDs()) ?? []
+            async let followed = (try? await feedSync.followedUsernames()) ?? []
+            await mergeFeed(remote: remotePosts, liked: Set(likedIDs), followed: followed)
+        }
+    }
+
+    private func mergeFeed(remote: [FeedPostRecord], liked: Set<UUID>, followed: [String]) async {
+        let locals = (try? context.fetch(FetchDescriptor<FeedPost>())) ?? []
+        var localByID = Dictionary(locals.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let remoteIDs = Set(remote.map(\.id))
+
+        for record in remote {
+            if let post = localByID[record.id] {
+                post.title = record.title
+                post.dreamDescription = record.dreamDescription
+                post.authorUsername = record.authorUsername
+                post.authorName = record.authorName
+                post.likeCount = record.likeCount
+                post.viewCount = record.viewCount
+                post.commentCount = record.commentCount
+                post.isLiked = liked.contains(record.id)
+            } else {
+                let post = FeedPost(
+                    id: record.id,
+                    dreamID: record.dreamID,
+                    authorUsername: record.authorUsername,
+                    authorName: record.authorName,
+                    title: record.title,
+                    dreamDescription: record.dreamDescription,
+                    createdAt: record.createdAt,
+                    likeCount: record.likeCount,
+                    isLiked: liked.contains(record.id),
+                    commentCount: record.commentCount,
+                    viewCount: record.viewCount
+                )
+                context.insert(post)
+                localByID[record.id] = post
+            }
+        }
+
+        // Drop *others'* local posts that no longer exist remotely. Our own posts
+        // are managed locally by `syncFeedPost`, and a fresh one may not have
+        // round-tripped to the server yet, so never delete those here.
+        let me = currentAuthor().username.lowercased()
+        for post in locals where !remoteIDs.contains(post.id) && post.authorUsername.lowercased() != me {
+            context.delete(post)
+        }
+
+        // Mirror the follow set locally.
+        let followedSet = Set(followed.map { $0.lowercased() })
+        let localFollows = (try? context.fetch(FetchDescriptor<Follow>())) ?? []
+        for follow in localFollows where !followedSet.contains(follow.username.lowercased()) {
+            context.delete(follow)
+        }
+        let existingLocal = Set(localFollows.map { $0.username.lowercased() })
+        for username in followed where !existingLocal.contains(username.lowercased()) {
+            context.insert(Follow(username: username))
+        }
+
+        save()
+    }
+
+    /// Pull a post's comments into the local cache so the comments sheet shows
+    /// everyone's, not just this device's.
+    func reconcileComments(postID: UUID) {
+        guard let feedSync else { return }
+        Task {
+            guard let remote = try? await feedSync.fetchComments(postID: postID) else { return }
+            await mergeComments(remote: remote, postID: postID)
+        }
+    }
+
+    private func mergeComments(remote: [FeedCommentRecord], postID: UUID) async {
+        let descriptor = FetchDescriptor<Comment>(predicate: #Predicate<Comment> { $0.postID == postID })
+        let locals = (try? context.fetch(descriptor)) ?? []
+        var byID = Dictionary(locals.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let remoteIDs = Set(remote.map(\.id))
+
+        for record in remote {
+            if let comment = byID[record.id] {
+                comment.text = record.text
+                comment.authorUsername = record.authorUsername
+                comment.authorName = record.authorName
+            } else {
+                let comment = Comment(
+                    id: record.id,
+                    postID: record.postID,
+                    authorUsername: record.authorUsername,
+                    authorName: record.authorName,
+                    text: record.text,
+                    createdAt: record.createdAt
+                )
+                context.insert(comment)
+                byID[record.id] = comment
+            }
+        }
+
+        // Remove others' comments deleted remotely; keep our own (may be mid-push).
+        let me = currentAuthor().username.lowercased()
+        for comment in locals where !remoteIDs.contains(comment.id) && comment.authorUsername.lowercased() != me {
+            context.delete(comment)
+        }
+
+        save()
     }
 
     // MARK: - Internals
@@ -399,7 +620,7 @@ enum PreviewData {
     /// An in-memory container seeded with samples, for SwiftUI previews.
     static let container: ModelContainer = {
         let container = try! ModelContainer(
-            for: Dream.self, DeletedDream.self, FeedPost.self, Follow.self,
+            for: Dream.self, DeletedDream.self, FeedPost.self, Follow.self, Comment.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         for dream in Dream.makeSamples() {

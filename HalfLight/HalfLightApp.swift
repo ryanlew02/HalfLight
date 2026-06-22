@@ -21,7 +21,7 @@ struct HalfLightApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: [Dream.self, DeletedDream.self, FeedPost.self, Follow.self])
+        .modelContainer(for: [Dream.self, DeletedDream.self, FeedPost.self, Follow.self, Comment.self])
     }
 }
 
@@ -68,14 +68,16 @@ private struct RootView: View {
         .onChange(of: auth.status) { _, status in
             if status == .signedIn {
                 store?.reconcileWithRemote()
+                store?.reconcileFeed()
             }
         }
     }
 
-    /// Builds the store with a remote sync backend when Supabase is available.
+    /// Builds the store with remote backends (dream backup + social feed) when
+    /// Supabase is available.
     private func makeStore() -> DreamStore {
         #if canImport(Supabase)
-        DreamStore(context: modelContext, sync: SupabaseDreamSync())
+        DreamStore(context: modelContext, sync: SupabaseDreamSync(), feedSync: SupabaseFeedSync())
         #else
         DreamStore(context: modelContext)
         #endif

@@ -191,6 +191,9 @@ struct AchievementMedallion: View {
     let tint: Color
     let unlocked: Bool
     var size: CGFloat = 64
+    /// Soft colored halo behind earned badges. On by default for the gallery; turn
+    /// it off where the badges should sit flatter (e.g. a profile badge row).
+    var bloom: Bool = true
 
     var body: some View {
         ZStack {
@@ -214,7 +217,7 @@ struct AchievementMedallion: View {
                 .font(.system(size: size * 0.4, weight: .bold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(glyphFill)
-                .shadow(color: unlocked ? tint.opacity(0.55) : .clear,
+                .shadow(color: (unlocked && bloom) ? tint.opacity(0.55) : .clear,
                         radius: size * 0.03, y: size * 0.02)
         }
         .frame(width: size, height: size)
@@ -227,7 +230,7 @@ struct AchievementMedallion: View {
             Circle()
                 .fill(tint)
                 .blur(radius: size * 0.26)
-                .opacity(unlocked ? 0.4 : 0)
+                .opacity((unlocked && bloom) ? 0.4 : 0)
         )
     }
 
