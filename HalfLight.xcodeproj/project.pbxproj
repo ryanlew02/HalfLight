@@ -8,16 +8,69 @@
 
 /* Begin PBXBuildFile section */
 		A40223782FE33DDB0080AF4B /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = A40223772FE33DDB0080AF4B /* Supabase */; };
+		A45B4FC22FEADD790008CEEC /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A45B4FC12FEADD790008CEEC /* WidgetKit.framework */; };
+		A45B4FC42FEADD790008CEEC /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A45B4FC32FEADD790008CEEC /* SwiftUI.framework */; };
+		A45B4FD52FEADD7A0008CEEC /* HalfLightWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A45B4FC02FEADD790008CEEC /* HalfLightWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A45B4FD32FEADD7A0008CEEC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2497052C2FDE065D00D64129 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A45B4FBF2FEADD790008CEEC;
+			remoteInfo = HalfLightWidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A45B4FDA2FEADD7A0008CEEC /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A45B4FD52FEADD7A0008CEEC /* HalfLightWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		249705342FDE065D00D64129 /* HalfLight.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HalfLight.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A45B4FC02FEADD790008CEEC /* HalfLightWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HalfLightWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A45B4FC12FEADD790008CEEC /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		A45B4FC32FEADD790008CEEC /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A45B4FD62FEADD7A0008CEEC /* Exceptions for "HalfLightWidgets" folder in "HalfLightWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A45B4FBF2FEADD790008CEEC /* HalfLightWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		249705362FDE065D00D64129 /* HalfLight */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = HalfLight;
+			sourceTree = "<group>";
+		};
+		A45B4FC52FEADD790008CEEC /* HalfLightWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A45B4FD62FEADD7A0008CEEC /* Exceptions for "HalfLightWidgets" folder in "HalfLightWidgetsExtension" target */,
+			);
+			path = HalfLightWidgets;
+			sourceTree = "<group>";
+		};
+		A45B500A2FEADD7A0008CEEC /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +84,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A45B4FBD2FEADD790008CEEC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A45B4FC42FEADD790008CEEC /* SwiftUI.framework in Frameworks */,
+				A45B4FC22FEADD790008CEEC /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -38,6 +100,8 @@
 			isa = PBXGroup;
 			children = (
 				249705362FDE065D00D64129 /* HalfLight */,
+				A45B500A2FEADD7A0008CEEC /* Shared */,
+				A45B4FC52FEADD790008CEEC /* HalfLightWidgets */,
 				A40223762FE33DDB0080AF4B /* Frameworks */,
 				249705352FDE065D00D64129 /* Products */,
 			);
@@ -47,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				249705342FDE065D00D64129 /* HalfLight.app */,
+				A45B4FC02FEADD790008CEEC /* HalfLightWidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -54,6 +119,8 @@
 		A40223762FE33DDB0080AF4B /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				A45B4FC12FEADD790008CEEC /* WidgetKit.framework */,
+				A45B4FC32FEADD790008CEEC /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -68,13 +135,16 @@
 				249705302FDE065D00D64129 /* Sources */,
 				249705312FDE065D00D64129 /* Frameworks */,
 				249705322FDE065D00D64129 /* Resources */,
+				A45B4FDA2FEADD7A0008CEEC /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A45B4FD42FEADD7A0008CEEC /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				249705362FDE065D00D64129 /* HalfLight */,
+				A45B500A2FEADD7A0008CEEC /* Shared */,
 			);
 			name = HalfLight;
 			packageProductDependencies = (
@@ -84,6 +154,29 @@
 			productReference = 249705342FDE065D00D64129 /* HalfLight.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A45B4FBF2FEADD790008CEEC /* HalfLightWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A45B4FD72FEADD7A0008CEEC /* Build configuration list for PBXNativeTarget "HalfLightWidgetsExtension" */;
+			buildPhases = (
+				A45B4FBC2FEADD790008CEEC /* Sources */,
+				A45B4FBD2FEADD790008CEEC /* Frameworks */,
+				A45B4FBE2FEADD790008CEEC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A45B4FC52FEADD790008CEEC /* HalfLightWidgets */,
+				A45B500A2FEADD7A0008CEEC /* Shared */,
+			);
+			name = HalfLightWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = HalfLightWidgetsExtension;
+			productReference = A45B4FC02FEADD790008CEEC /* HalfLightWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -91,11 +184,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					249705332FDE065D00D64129 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					A45B4FBF2FEADD790008CEEC = {
+						CreatedOnToolsVersion = 26.5;
 					};
 				};
 			};
@@ -117,12 +213,20 @@
 			projectRoot = "";
 			targets = (
 				249705332FDE065D00D64129 /* HalfLight */,
+				A45B4FBF2FEADD790008CEEC /* HalfLightWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		249705322FDE065D00D64129 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A45B4FBE2FEADD790008CEEC /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -139,7 +243,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A45B4FBC2FEADD790008CEEC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A45B4FD42FEADD7A0008CEEC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A45B4FBF2FEADD790008CEEC /* HalfLightWidgetsExtension */;
+			targetProxy = A45B4FD32FEADD7A0008CEEC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		2497053D2FDE065F00D64129 /* Debug */ = {
@@ -348,6 +467,75 @@
 			};
 			name = Release;
 		};
+		A45B4FD82FEADD7A0008CEEC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = HalfLightWidgets/HalfLightWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 67P9CWNAU8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HalfLightWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HalfLightWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = LanternHours.HalfLight.HalfLightWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A45B4FD92FEADD7A0008CEEC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = HalfLightWidgets/HalfLightWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 67P9CWNAU8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HalfLightWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HalfLightWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = LanternHours.HalfLight.HalfLightWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -365,6 +553,15 @@
 			buildConfigurations = (
 				249705402FDE065F00D64129 /* Debug */,
 				249705412FDE065F00D64129 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A45B4FD72FEADD7A0008CEEC /* Build configuration list for PBXNativeTarget "HalfLightWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A45B4FD82FEADD7A0008CEEC /* Debug */,
+				A45B4FD92FEADD7A0008CEEC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

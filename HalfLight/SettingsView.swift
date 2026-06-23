@@ -100,31 +100,48 @@ private struct SettingRow: View {
 // MARK: - Name
 
 struct NameSettingsView: View {
+    @Environment(AuthService.self) private var auth
     @AppStorage("userName") private var userName = "Dreamer"
     @State private var draft = ""
 
     var body: some View {
         Form {
-            Section {
-                HStack {
-                    TextField("Your name", text: $draft)
-                        .textContentType(.givenName)
-                        .submitLabel(.done)
-                    if !draft.isEmpty {
-                        Button {
-                            draft = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Clear name")
+            if auth.isSignedIn {
+                // Signed in: the name comes from the account and can't be edited
+                // here — it's changed via the account / profile instead.
+                Section {
+                    HStack {
+                        Text("Name")
+                        Spacer()
+                        Text(auth.firstName?.isEmpty == false ? auth.firstName! : userName)
+                            .foregroundStyle(.secondary)
                     }
+                } footer: {
+                    Text("Your name comes from your account. Sign out to use a custom name on this device.")
                 }
-            } footer: {
-                Text("This is how HalfLight greets you on the Home screen.")
+                .listRowBackground(Color.dreamSurface)
+            } else {
+                Section {
+                    HStack {
+                        TextField("Your name", text: $draft)
+                            .textContentType(.givenName)
+                            .submitLabel(.done)
+                        if !draft.isEmpty {
+                            Button {
+                                draft = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear name")
+                        }
+                    }
+                } footer: {
+                    Text("This is how HalfLight greets you on the Home screen.")
+                }
+                .listRowBackground(Color.dreamSurface)
             }
-            .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
         .background { DreamBackground() }
@@ -132,6 +149,8 @@ struct NameSettingsView: View {
         .navigationTitle("Name")
         .onAppear { draft = userName }
         .onChange(of: draft) { _, newValue in
+            // Only a signed-out dreamer can set a custom local name.
+            guard !auth.isSignedIn else { return }
             let trimmed = newValue.trimmingCharacters(in: .whitespaces)
             userName = trimmed.isEmpty ? "Dreamer" : trimmed
         }

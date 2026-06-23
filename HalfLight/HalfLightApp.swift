@@ -60,6 +60,9 @@ private struct RootView: View {
                 // author snapshot up to date with the current profile.
                 store?.backfillFeedPosts()
                 store?.refreshFeedAuthors()
+                // One-time: re-sync public/lucid flags that older builds never
+                // uploaded, so dreams made public on one device aren't private here.
+                store?.republishVisibilityIfNeeded()
             }
             // Restoring may flip auth to signed-in, which triggers a reconcile
             // via onChange below.

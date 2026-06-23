@@ -93,16 +93,33 @@ final class SoundManager {
         #if canImport(UIKit) && !os(watchOS)
         switch effect {
         case .tap:
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        case .correct, .reward, .shimmer:
+            // A firm, full-strength tap — noticeably stronger than the old light one.
+            impact(.medium, intensity: 1.0)
+        case .shimmer:
+            impact(.heavy, intensity: 0.9)
+        case .correct, .reward:
+            // The success pattern plus a heavy thump so wins really land.
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            impact(.heavy, intensity: 1.0)
         case .wrong:
             UINotificationFeedbackGenerator().notificationOccurred(.error)
+            impact(.heavy, intensity: 1.0)
         case .achievement, .levelUp:
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            impact(.heavy, intensity: 1.0)
         }
         #endif
     }
+
+    #if canImport(UIKit) && !os(watchOS)
+    /// Fire an impact at full requested intensity. `prepare()` warms the engine so
+    /// the hit lands immediately and at full strength rather than ramping up.
+    private func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred(intensity: intensity)
+    }
+    #endif
 
     // MARK: - Tone synthesis
 

@@ -383,7 +383,7 @@ struct LucidLessonView: View {
             Text(primaryLabel)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(PrimaryButtonStyle())
+        .buttonStyle(LessonButtonStyle())
         .disabled(step == .quiz && selectedAnswer == nil)
         .opacity(step == .quiz && selectedAnswer == nil ? 0.5 : 1)
         .padding(.horizontal, 20)
@@ -411,6 +411,32 @@ struct LucidLessonView: View {
         guard let next = Step(rawValue: step.rawValue + 1) else { return }
         // The primary button's style plays the tap; just advance here.
         withAnimation(.easeInOut(duration: 0.25)) { step = next }
+    }
+}
+
+/// A more tactile take on the primary button for the lesson flow: it presses in
+/// deeper, its glow collapses as if pushed into the surface, and it springs back
+/// with a little bounce — paired with a firm haptic for a satisfying "click".
+private struct LessonButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        return configuration.label
+            .font(.dreamGrotesk(16, .bold))
+            .foregroundStyle(Color.dreamOnPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 17)
+            .background(Color.dreamPrimary, in: .rect(cornerRadius: DreamMetric.controlRadius))
+            // The halo tightens and dims on press, reading as the button sinking in.
+            .shadow(
+                color: Color.dreamPrimary.opacity(pressed ? 0.12 : 0.45),
+                radius: pressed ? 3 : 14,
+                y: pressed ? 1 : 7
+            )
+            .scaleEffect(pressed ? 0.93 : 1)
+            .animation(.spring(response: 0.26, dampingFraction: 0.5), value: pressed)
+            .onChange(of: pressed) { _, isPressed in
+                if isPressed { SoundManager.shared.play(.tap) }
+            }
     }
 }
 

@@ -27,4 +27,26 @@ extension Dream.Mood {
         case .euphoric: Color(red: 0.85, green: 0.35, blue: 0.85)
         }
     }
+
+    /// The `tint` as a 0xRRGGBB integer, so it can travel in `DreamSnapshot` to
+    /// the widget extension (which has no access to `Color`). Kept in lockstep
+    /// with `tint` above.
+    var tintHex: UInt32 {
+        switch self {
+        case .peaceful: 0x669EEB
+        case .joyful:   0xFAC757
+        case .strange:  0xB380EB
+        case .anxious:  0x8C9EB3
+        case .vivid:    0xF273B3
+        case .nightmare: 0x6B4D8C
+        case .romantic: 0xF2668C
+        case .sad:      0x66809E
+        case .exciting: 0xFA8C40
+        case .mysterious: 0x525CA3
+        case .lonely:   0x808C99
+        case .hopeful:  0xFAAD80
+        case .nostalgic: 0xCC9966
+        case .euphoric: 0xD959D9
+        }
+    }
 }

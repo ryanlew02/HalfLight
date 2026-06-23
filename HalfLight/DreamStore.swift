@@ -170,6 +170,32 @@ final class DreamStore {
 
     // MARK: - Remote sync
 
+    /// One-time repair for dreams whose public/lucid flags never made it to the
+    /// server (older versions didn't sync them, so a dream made public on one
+    /// device looked private on another). Re-push every locally public/lucid dream
+    /// with a fresh timestamp so it wins the last-write-wins merge and the flags
+    /// land everywhere. Private dreams are deliberately left alone, so a device
+    /// that wrongly shows a dream private never clobbers the one that has it right.
+    /// Runs once per device.
+    func republishVisibilityIfNeeded() {
+        guard sync != nil else { return }
+        let key = "didRepublishVisibility_v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+
+        let flagged = ((try? context.fetch(FetchDescriptor<Dream>())) ?? [])
+            .filter { $0.isPublic || $0.isLucid }
+        guard !flagged.isEmpty else { return }
+        for dream in flagged {
+            dream.updatedAt = .now
+            dream.needsUpload = true
+        }
+        save()
+        // Push now if signed in; otherwise the bumped timestamp means the next
+        // reconcile will upload them as the newer copy.
+        flagged.forEach(pushRemote)
+    }
+
     /// Pull the signed-in user's remote dreams and merge them with local ones.
     /// Safe to call on every sign-in / launch-while-signed-in.
     func reconcileWithRemote() {
@@ -572,6 +598,8 @@ extension Dream {
             date: date,
             mood: mood.rawValue,
             tags: tags,
+            isPublic: isPublic,
+            isLucid: isLucid,
             aiCategory: aiCategory,
             aiMeaning: aiMeaning,
             aiThemes: aiThemes,
@@ -590,6 +618,8 @@ extension DreamRecord {
             date: date,
             mood: Dream.Mood(rawValue: mood) ?? .vivid,
             tags: tags,
+            isPublic: isPublic ?? false,
+            isLucid: isLucid ?? false,
             aiCategory: aiCategory,
             aiMeaning: aiMeaning,
             aiThemes: aiThemes ?? [],
@@ -607,6 +637,8 @@ extension DreamRecord {
         dream.date = date
         dream.mood = Dream.Mood(rawValue: mood) ?? .vivid
         dream.tags = tags
+        dream.isPublic = isPublic ?? false
+        dream.isLucid = isLucid ?? false
         dream.aiCategory = aiCategory
         dream.aiMeaning = aiMeaning
         dream.aiThemes = aiThemes ?? []

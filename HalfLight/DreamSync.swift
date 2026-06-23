@@ -19,6 +19,10 @@ struct DreamRecord: Codable, Sendable {
     var date: Date
     var mood: String
     var tags: [String]
+    /// Visibility + lucidity. Optional so rows predating the `is_public` /
+    /// `is_lucid` columns still decode (treated as `false`).
+    var isPublic: Bool?
+    var isLucid: Bool?
     var aiCategory: String?
     var aiMeaning: String?
     /// Optional so rows predating the `ai_themes` column still decode.
@@ -28,6 +32,8 @@ struct DreamRecord: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, title, entry, date, mood, tags
         case userID = "user_id"
+        case isPublic = "is_public"
+        case isLucid = "is_lucid"
         case aiCategory = "ai_category"
         case aiMeaning = "ai_meaning"
         case aiThemes = "ai_themes"

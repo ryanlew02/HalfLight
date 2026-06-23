@@ -251,6 +251,11 @@ struct ProfileView: View {
             guard let item else { return }
             Task { await prepareCrop(item) }
         }
+        // Sync the photo to the account so it follows the dreamer across devices
+        // (covers setting, re-cropping, and removing).
+        .onChange(of: profilePhotoData) { _, newValue in
+            Task { await auth.updateAvatar(newValue) }
+        }
     }
 
     /// The stored profile photo as a SwiftUI `Image`, if one is set.

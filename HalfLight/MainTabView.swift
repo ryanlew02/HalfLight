@@ -55,6 +55,21 @@ struct MainTabView: View {
                     .zIndex(10)
                 }
             }
+            // Morning quick-capture: opened from a widget / Control / Siri, this
+            // sheet starts a new dream with dictation already running, from any tab.
+            .fullScreenCover(isPresented: $router.quickRecord) {
+                AddDreamView(autoDictate: true) { draft in
+                    let earnedXP = !hasJournalXPToday
+                    store.add(draft)
+                    if earnedXP {
+                        router.presentClaim(
+                            xp: DreamProgression.xpPerJournaledDay,
+                            title: "Dream logged for today",
+                            headline: "Dream Logged"
+                        )
+                    }
+                }
+            }
             // Record the baseline of already-earned badges once, then celebrate any
             // achievement the moment the dreamer crosses its goal — from any source.
             .task {
@@ -62,6 +77,8 @@ struct MainTabView: View {
                 // Seed the level baseline once so we only celebrate future level-ups.
                 if celebratedLevel == 0 { celebratedLevel = currentLevel }
                 refreshReminders()
+                updateWidgetSnapshot()
+                consumeQuickRecordRequest()
             }
             .onChange(of: unlockedAchievementCount) { _, _ in
                 let newly = AchievementTracker.newlyUnlocked(for: achievementStats)
@@ -78,12 +95,38 @@ struct MainTabView: View {
             // Keep reminders in step with usage: app foreground, journaling activity,
             // and the setting itself all reschedule the morning / inactivity / streak nudges.
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { refreshReminders() }
+                if phase == .active {
+                    refreshReminders()
+                    updateWidgetSnapshot()
+                    consumeQuickRecordRequest()
+                }
             }
-            .onChange(of: dreams.count) { _, _ in refreshReminders() }
-            .onChange(of: store.skippedDays) { _, _ in refreshReminders() }
+            .onChange(of: dreams.count) { _, _ in refreshReminders(); updateWidgetSnapshot() }
+            .onChange(of: store.skippedDays) { _, _ in refreshReminders(); updateWidgetSnapshot() }
             .onChange(of: reminderEnabled) { _, _ in refreshReminders() }
             .onChange(of: morningReminderMinutes) { _, _ in refreshReminders() }
+    }
+
+    // MARK: - Widgets & quick capture
+
+    /// Refresh the shared snapshot the home-screen and lock-screen widgets read.
+    private func updateWidgetSnapshot() {
+        WidgetSnapshotWriter.update(dreams: dreams, journaledDays: journaledDays)
+    }
+
+    /// Honor a pending widget / Control / Siri "record a dream" request by opening
+    /// the quick-capture sheet. The signal is one-shot and freshness-gated.
+    private func consumeQuickRecordRequest() {
+        if QuickRecordSignal.consume() { router.quickRecord = true }
+    }
+
+    /// Whether today has already banked its once-per-day journaling XP, so the
+    /// quick-capture reward popup fires only when XP is genuinely earned. Mirrors
+    /// the same check in `DreamJournalView`.
+    private var hasJournalXPToday: Bool {
+        let today = Calendar.current.startOfDay(for: .now)
+        if dreams.contains(where: { Calendar.current.isDateInToday($0.date) }) { return true }
+        return store.skippedDays.contains(today) || store.creditedDays.contains(today)
     }
 
     // MARK: - Reminders

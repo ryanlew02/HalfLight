@@ -15,8 +15,13 @@ struct AddDreamView: View {
     /// Called when the user deletes the dream while editing. `nil` hides the
     /// delete option (e.g. when creating a new dream).
     var onDelete: (() -> Void)? = nil
+    /// Start voice dictation automatically on appear — used by the morning
+    /// quick-capture from a widget / Control so the mic is live the instant the
+    /// sheet opens. Only honored when creating a new dream.
+    var autoDictate: Bool = false
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showDeleteConfirm = false
 
     @State private var title: String
@@ -37,13 +42,17 @@ struct AddDreamView: View {
     @State private var transcriber = DreamTranscriber()
     @State private var entryBeforeDictation = ""
     @State private var analyzer = DreamAnalyzer()
+    /// Guards the auto-dictation kickoff so it only fires once per presentation.
+    @State private var didAutoStartDictation = false
 
     init(
         existingDream: Dream? = nil,
+        autoDictate: Bool = false,
         onSave: @escaping (DreamDraft) -> Void,
         onDelete: (() -> Void)? = nil
     ) {
         self.existingDream = existingDream
+        self.autoDictate = autoDictate
         self.onSave = onSave
         self.onDelete = onDelete
         _title = State(initialValue: existingDream?.title ?? "")
@@ -193,6 +202,12 @@ struct AddDreamView: View {
             }
             .onChange(of: transcriber.transcript) { _, newValue in
                 applyTranscript(newValue)
+            }
+            .task { await autoStartDictationIfNeeded() }
+            // Stop listening the moment the app leaves the foreground — leaving the
+            // mic live in the background would be unsettling.
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { transcriber.stop() }
             }
             .onDisappear { transcriber.stop() }
             .navigationTitle(isEditing ? "Edit Dream" : "New Dream")
@@ -466,6 +481,14 @@ struct AddDreamView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// Kick off dictation on open for the quick-capture flow, once, for new dreams.
+    private func autoStartDictationIfNeeded() async {
+        guard autoDictate, !isEditing, !didAutoStartDictation else { return }
+        didAutoStartDictation = true
+        entryBeforeDictation = entry
+        await transcriber.start()
     }
 
     private func toggleDictation() {

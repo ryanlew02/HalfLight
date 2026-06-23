@@ -10,11 +10,13 @@
 
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 struct HomeView: View {
     @Environment(DreamStore.self) private var store
     @Environment(AuthService.self) private var auth
     @Environment(AppRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \Dream.date, order: .reverse) private var dreams: [Dream]
 
     @AppStorage("userName") private var userName = "Dreamer"
@@ -31,6 +33,10 @@ struct HomeView: View {
     @State private var randomDream: Dream?
     /// Presents the account sheet from the "Create an account" tip.
     @State private var showAuth = false
+    /// Whether the dreamer has added any HalfLight Lock Screen (accessory) widget —
+    /// resolves the Lock Screen widget tip. Refreshed from WidgetKit on appear and
+    /// when the app returns to the foreground (e.g. after adding one).
+    @State private var hasLockScreenWidget = false
 
     var body: some View {
         NavigationStack {
@@ -68,6 +74,10 @@ struct HomeView: View {
             .tabBarClearance()
             .background { DreamBackground() }
             .toolbar(.hidden, for: .navigationBar)
+            .onAppear { refreshLockScreenWidgetTip() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { refreshLockScreenWidgetTip() }
+            }
             .navigationDestination(item: $randomDream) { dream in
                 DreamDetailView(dream: dream)
             }
@@ -767,37 +777,64 @@ struct HomeView: View {
 
     // MARK: - Tips
 
-    /// Outstanding tips: the account tip resolves once signed in; the Lock Screen
-    /// widget tip is always counted for now (not implemented yet).
-    private var tipsRemaining: Int { (auth.isSignedIn ? 0 : 1) + 1 }
+    /// The account tip resolves once signed in.
+    private var accountTipOutstanding: Bool { !auth.isSignedIn }
+    /// The Lock Screen widget tip resolves once an accessory widget is installed.
+    private var widgetTipOutstanding: Bool { !hasLockScreenWidget }
 
-    private var tipsSection: some View {
-        VStack(alignment: .leading, spacing: DreamMetric.md) {
-            HStack(spacing: 8) {
-                Eyebrow("Tips", size: 9.5, tracking: 1.4)
-                Text("\(tipsRemaining)")
-                    .font(.dreamMono(10, .semibold))
-                    .foregroundStyle(Color.dreamOnPrimary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.dreamPrimary, in: .circle)
+    /// Number of tips still to complete; drives the count badge.
+    private var tipsRemaining: Int {
+        (accountTipOutstanding ? 1 : 0) + (widgetTipOutstanding ? 1 : 0)
+    }
+
+    /// Ask WidgetKit whether any HalfLight Lock Screen (accessory) widget is
+    /// installed; if so, the Lock Screen widget tip is complete.
+    private func refreshLockScreenWidgetTip() {
+        WidgetCenter.shared.getCurrentConfigurations { result in
+            guard case .success(let widgets) = result else { return }
+            let hasAccessory = widgets.contains { info in
+                switch info.family {
+                case .accessoryCircular, .accessoryRectangular, .accessoryInline: true
+                default: false
+                }
             }
-
-            if !auth.isSignedIn {
-                TipCard(
-                    icon: "icloud.fill",
-                    title: "Create an account",
-                    detail: "Back up your dreams to the cloud so they're saved and synced — you'll never lose a memory.",
-                    action: { showAuth = true }
-                )
-            }
-
-            TipCard(
-                icon: "lock.fill",
-                title: "Add a Lock Screen widget",
-                detail: "Put HalfLight on your Lock Screen to capture dreams the moment you wake, before they fade."
-            )
+            Task { @MainActor in hasLockScreenWidget = hasAccessory }
         }
-        .padding(.top, 4)
+    }
+
+    /// The Tips section — hidden entirely once every tip is done.
+    @ViewBuilder
+    private var tipsSection: some View {
+        if tipsRemaining > 0 {
+            VStack(alignment: .leading, spacing: DreamMetric.md) {
+                HStack(spacing: 8) {
+                    Eyebrow("Tips", size: 9.5, tracking: 1.4)
+                    Text("\(tipsRemaining)")
+                        .font(.dreamMono(10, .semibold))
+                        .foregroundStyle(Color.dreamOnPrimary)
+                        .frame(width: 18, height: 18)
+                        .background(Color.dreamPrimary, in: .circle)
+                }
+
+                if accountTipOutstanding {
+                    TipCard(
+                        icon: "icloud.fill",
+                        title: "Create an account",
+                        detail: "Back up your dreams to the cloud so they're saved and synced — you'll never lose a memory.",
+                        action: { showAuth = true }
+                    )
+                }
+
+                if widgetTipOutstanding {
+                    TipCard(
+                        icon: "lock.fill",
+                        title: "Add a Lock Screen widget",
+                        detail: "Put HalfLight on your Lock Screen to capture dreams the moment you wake, before they fade."
+                    )
+                }
+            }
+            .padding(.top, 4)
+        }
     }
 }
 

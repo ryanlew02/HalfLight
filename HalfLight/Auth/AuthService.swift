@@ -64,6 +64,11 @@ protocol AuthBackend: Sendable {
     func fetchProfile() async -> ProfileInfo?
     /// Update the current user's bio (free-text; may be empty to clear it).
     func updateBio(_ bio: String) async throws
+    /// Store the current user's profile photo (cropped JPEG), or clear it with
+    /// `nil`, so it syncs across their devices.
+    func updateAvatar(_ data: Data?) async throws
+    /// The current user's profile photo, if one has been uploaded.
+    func fetchAvatar() async -> Data?
     /// Change the current user's username. Throws if it's taken or the server's
     /// 30-day cooldown rejects it.
     func updateUsername(_ username: String) async throws
@@ -153,12 +158,39 @@ final class AuthService {
         // Reinstall / new device: pull the username from the server so an existing
         // account isn't asked to choose one again.
         await hydrateProfileIfNeeded()
+        await hydrateAvatarIfNeeded()
     }
 
-    /// If signed in but no username is known locally, fetch it from the backend
-    /// and cache it. Leaves names untouched when the server doesn't return them.
+    /// Keep the local profile photo and the account's copy in step:
+    /// - no local photo → pull the account's, so it follows the dreamer to a new
+    ///   device;
+    /// - local photo but none on the account → upload it (backfills photos set
+    ///   before cross-device sync existed).
+    private func hydrateAvatarIfNeeded() async {
+        guard isSignedIn else { return }
+        if let local = UserDefaults.standard.data(forKey: "profilePhoto") {
+            if await backend.fetchAvatar() == nil {
+                try? await backend.updateAvatar(local)
+            }
+        } else if let remote = await backend.fetchAvatar() {
+            UserDefaults.standard.set(remote, forKey: "profilePhoto")
+        }
+    }
+
+    /// Upload (or clear, with `nil`) the dreamer's profile photo to their account.
+    /// Best-effort, mirroring the dream/feed sync: the local copy is the source of
+    /// truth and a failed upload simply retries next time the photo changes.
+    func updateAvatar(_ data: Data?) async {
+        try? await backend.updateAvatar(data)
+    }
+
+    /// Refresh the cached profile from the account whenever signed in: the server
+    /// is the source of truth for a signed-in dreamer, so this also makes the
+    /// account's first name win over any locally-set name (the greeting reads
+    /// `userName`). Runs on every launch / sign-in; a failed fetch (e.g. offline)
+    /// leaves the cached values in place.
     private func hydrateProfileIfNeeded() async {
-        guard isSignedIn, (username?.isEmpty ?? true) else { return }
+        guard isSignedIn else { return }
         guard let remote = await backend.fetchProfile() else { return }
         let defaults = UserDefaults.standard
         username = remote.username
@@ -349,6 +381,9 @@ final class AuthService {
 
     func signIn(email: String, password: String) async {
         await perform(provider: .email) { try await self.backend.signIn(email: email, password: password) }
+        // New device: pull the profile + photo so they're present immediately.
+        await hydrateProfileIfNeeded()
+        await hydrateAvatarIfNeeded()
     }
 
     func sendPasswordReset(email: String) async {
@@ -386,6 +421,9 @@ final class AuthService {
         defer { isWorking = false }
         do {
             try await backend.signOut()
+            // Drop the cached photo so the next account doesn't inherit it (and so
+            // its own photo can hydrate from the server).
+            UserDefaults.standard.removeObject(forKey: "profilePhoto")
             email = nil
             provider = .unknown
             status = .signedOut
@@ -425,7 +463,7 @@ final class AuthService {
         let defaults = UserDefaults.standard
         for key in [
             "userUsername", "userFirstName", "userLastName",
-            "userName", "userBio", "userUsernameChangedAt",
+            "userName", "userBio", "userUsernameChangedAt", "profilePhoto",
         ] {
             defaults.removeObject(forKey: key)
         }
@@ -467,6 +505,7 @@ final class AuthService {
             // username-setup screen with the name Apple just gave us (first sign-in
             // only — Apple won't send it again).
             await hydrateProfileIfNeeded()
+            await hydrateAvatarIfNeeded()
             if needsProfileSetup {
                 if let given = appleName?.givenName, (firstName?.isEmpty ?? true) {
                     firstName = given
@@ -581,6 +620,15 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.set(bio, forKey: "mockBio")
     }
 
+    func updateAvatar(_ data: Data?) async throws {
+        if let data { UserDefaults.standard.set(data, forKey: "mockAvatar") }
+        else { UserDefaults.standard.removeObject(forKey: "mockAvatar") }
+    }
+
+    func fetchAvatar() async -> Data? {
+        UserDefaults.standard.data(forKey: "mockAvatar")
+    }
+
     func updateUsername(_ username: String) async throws {
         var taken = Set(UserDefaults.standard.stringArray(forKey: usernamesKey) ?? [])
         guard taken.insert(username.lowercased()).inserted else {
@@ -642,15 +690,20 @@ private struct ProfileRow: Codable {
     }
 }
 
-/// The publicly-readable profile fields (names are kept private server-side).
-private struct PublicProfileRow: Codable {
+/// The caller's own full profile, returned by the `my_profile()` RPC (names are
+/// private from other users but visible to their owner).
+private struct MyProfileRow: Decodable {
     let username: String
+    let firstName: String?
+    let lastName: String?
     let bio: String?
     /// Raw timestamptz text; parsed into a `Date` by the backend.
     let usernameChangedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case username
+        case firstName = "first_name"
+        case lastName = "last_name"
         case bio
         case usernameChangedAt = "username_changed_at"
     }
@@ -760,20 +813,19 @@ final class SupabaseAuthBackend: AuthBackend {
 
     func fetchProfile() async -> ProfileInfo? {
         guard SupabaseConfig.isConfigured,
-              let userID = (try? await client.auth.session)?.user.id else { return nil }
-        let rows: [PublicProfileRow]? = try? await client
-            .from("profiles")
-            .select("username,bio,username_changed_at")
-            .eq("id", value: userID)
-            .limit(1)
+              (try? await client.auth.session) != nil else { return nil }
+        // `my_profile()` returns the caller's own row including their name, which
+        // is private from everyone else — so the app can greet returning users by
+        // their account first name on any device.
+        let rows: [MyProfileRow]? = try? await client
+            .rpc("my_profile")
             .execute()
             .value
         guard let row = rows?.first else { return nil }
-        // Names stay private on the server; the gate only needs the username.
         return ProfileInfo(
             username: row.username,
-            firstName: "",
-            lastName: "",
+            firstName: row.firstName ?? "",
+            lastName: row.lastName ?? "",
             bio: row.bio ?? "",
             usernameChangedAt: row.usernameChangedAt.flatMap(Self.parseTimestamp)
         )
@@ -789,6 +841,36 @@ final class SupabaseAuthBackend: AuthBackend {
             .update(["bio": bio])
             .eq("id", value: userID)
             .execute()
+    }
+
+    func updateAvatar(_ data: Data?) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard let userID = (try? await client.auth.session)?.user.id else {
+            throw AuthError.message("You need to be signed in to update your photo.")
+        }
+        // A Codable struct (rather than a dictionary) so a `nil` encodes as SQL
+        // NULL, clearing the column when the photo is removed.
+        struct AvatarUpdate: Encodable { let avatar: String? }
+        try await client
+            .from("profiles")
+            .update(AvatarUpdate(avatar: data?.base64EncodedString()))
+            .eq("id", value: userID)
+            .execute()
+    }
+
+    func fetchAvatar() async -> Data? {
+        guard SupabaseConfig.isConfigured,
+              let userID = (try? await client.auth.session)?.user.id else { return nil }
+        struct AvatarRow: Decodable { let avatar: String? }
+        let rows: [AvatarRow]? = try? await client
+            .from("profiles")
+            .select("avatar")
+            .eq("id", value: userID)
+            .limit(1)
+            .execute()
+            .value
+        guard let encoded = rows?.first?.avatar else { return nil }
+        return Data(base64Encoded: encoded)
     }
 
     func updateUsername(_ username: String) async throws {

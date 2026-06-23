@@ -96,7 +96,17 @@ struct StatsView: View {
     private var streak: Streak { Streak.from(journaledDays: journaledDays) }
 
     private var progressSection: some View {
-        NavigationLink {
+        // `totalXP` walks every dream and all 40 achievements, so compute it once
+        // and derive level/rank/progress from that single value (cheap int math)
+        // instead of recomputing it for each readout.
+        let totalXP = self.totalXP
+        let level = DreamProgression.level(forXP: totalXP)
+        let rank = DreamProgression.rank(forLevel: level)
+        let xpIntoLevel = DreamProgression.xpIntoLevel(forXP: totalXP)
+        let xpForLevel = DreamProgression.xpForCurrentLevel(forXP: totalXP)
+        let levelProgress = DreamProgression.progress(forXP: totalXP)
+
+        return NavigationLink {
             LevelsView(totalXP: totalXP)
         } label: {
             VStack(alignment: .leading, spacing: DreamMetric.md) {
@@ -134,7 +144,8 @@ struct StatsView: View {
     // MARK: - Streak
 
     private var streakSection: some View {
-        HStack(spacing: DreamMetric.md) {
+        let streak = self.streak
+        return HStack(spacing: DreamMetric.md) {
             streakCard(value: streak.current, label: "Current streak", icon: "flame.fill")
             streakCard(value: streak.longest, label: "Highest streak", icon: "trophy.fill")
         }
@@ -300,24 +311,21 @@ struct StatsView: View {
         )
     }
 
-    private var unlockedAchievements: [Achievement] {
-        Achievement.all.filter { $0.isUnlocked(for: achievementStats) }
-    }
-
     /// A short teaser for the Progress card: with 40 badges we can't show them
     /// all, so surface the unlocked ones first, then the locked badges nearest
-    /// completion, capped to a single tidy row.
-    private var previewAchievements: [Achievement] {
+    /// completion, capped to a single tidy row. Takes a prebuilt `stats` value so
+    /// the (expensive) stats aren't recomputed for every comparison in the sort.
+    private func previewAchievements(_ stats: AchievementStats) -> [Achievement] {
+        let unlocked = Achievement.all.filter { $0.isUnlocked(for: stats) }
         let lockedByProgress = Achievement.all
-            .filter { !$0.isUnlocked(for: achievementStats) }
-            .sorted { $0.fraction(for: achievementStats) > $1.fraction(for: achievementStats) }
-        return Array((unlockedAchievements + lockedByProgress).prefix(6))
+            .filter { !$0.isUnlocked(for: stats) }
+            .sorted { $0.fraction(for: stats) > $1.fraction(for: stats) }
+        return Array((unlocked + lockedByProgress).prefix(6))
     }
 
-    /// Medallion side length that lets the previewed badges fit the measured
+    /// Medallion side length that lets `count` previewed badges fit the measured
     /// strip width, capped so they don't balloon on wide screens.
-    private var medallionSize: CGFloat {
-        let count = previewAchievements.count
+    private func medallionSize(count: Int) -> CGFloat {
         // Zero until the strip width is measured: a zero-size badge for one
         // layout pass can't overflow the card, whereas a non-zero guess could.
         guard count > 0, medallionStripWidth > 0 else { return 0 }
@@ -326,15 +334,23 @@ struct StatsView: View {
     }
 
     private var achievementsSection: some View {
-        NavigationLink {
-            AchievementsView(stats: achievementStats)
+        // Build the stats once, then reuse the value everywhere below — each call
+        // to `isUnlocked`/`fraction` is then O(1) instead of rebuilding the stats
+        // (which walks every dream) per badge and per sort comparison.
+        let stats = achievementStats
+        let preview = previewAchievements(stats)
+        let unlockedCount = Achievement.all.reduce(0) { $0 + ($1.isUnlocked(for: stats) ? 1 : 0) }
+        let size = medallionSize(count: preview.count)
+
+        return NavigationLink {
+            AchievementsView(stats: stats)
         } label: {
             VStack(alignment: .leading, spacing: DreamMetric.md) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Achievements")
                         .font(.dreamDisplay(18, .bold))
                     Spacer()
-                    Text("\(unlockedAchievements.count) / \(Achievement.all.count)")
+                    Text("\(unlockedCount) / \(Achievement.all.count)")
                         .font(.dreamBody(13, .semibold))
                         .foregroundStyle(.secondary)
                     Image(systemName: "chevron.right")
@@ -348,12 +364,12 @@ struct StatsView: View {
                 // always fits inside the card and the strip only takes the
                 // vertical space the medallions actually need.
                 HStack(spacing: DreamMetric.sm) {
-                    ForEach(previewAchievements) { achievement in
+                    ForEach(preview) { achievement in
                         AchievementMedallion(
                             symbol: achievement.symbol,
                             tint: achievement.tint,
-                            unlocked: achievement.isUnlocked(for: achievementStats),
-                            size: medallionSize
+                            unlocked: achievement.isUnlocked(for: stats),
+                            size: size
                         )
                         .frame(maxWidth: .infinity)
                     }
@@ -393,6 +409,9 @@ struct StatsView: View {
 
     private var activitySection: some View {
         let weeks = weeks(for: selectedYear)
+        // Build the journaled-days set ONCE for the whole grid; it was previously
+        // rebuilt from every dream inside each of the ~370 day squares.
+        let journaled = journaledDays
         return VStack(alignment: .leading, spacing: DreamMetric.md) {
             Text("Activity")
                 .font(.dreamSectionHeader)
@@ -412,7 +431,7 @@ struct StatsView: View {
 
                 Spacer()
 
-                Text("\(daysJournaledCount(for: selectedYear)) days journaled")
+                Text("\(daysJournaledCount(in: journaled, for: selectedYear)) days journaled")
                     .font(.dreamCaption)
                     .foregroundStyle(.secondary)
             }
@@ -423,7 +442,7 @@ struct StatsView: View {
                         ForEach(Array(weeks.enumerated()), id: \.offset) { index, week in
                             VStack(spacing: squareSpacing) {
                                 ForEach(Array(week.enumerated()), id: \.offset) { _, day in
-                                    daySquare(for: day)
+                                    daySquare(for: day, journaled: journaled)
                                 }
                             }
                             .id(index)
@@ -459,15 +478,15 @@ struct StatsView: View {
         }
     }
 
-    private func daySquare(for day: Date?) -> some View {
-        let isJournaled = day.map { journaledDays.contains($0) } ?? false
+    private func daySquare(for day: Date?, journaled: Set<Date>) -> some View {
+        let isJournaled = day.map { journaled.contains($0) } ?? false
         return RoundedRectangle(cornerRadius: 2)
             .fill(isJournaled ? Color.dreamPrimary : Color.clear)
             .frame(width: squareSize, height: squareSize)
             .overlay {
                 // Empty real days get a faint outline so the grid stays legible;
                 // padding cells (nil) stay fully blank.
-                if let day, !journaledDays.contains(day) {
+                if day != nil, !isJournaled {
                     RoundedRectangle(cornerRadius: 2)
                         .stroke(Color.dreamText.opacity(0.12), lineWidth: 1)
                 }
@@ -497,9 +516,9 @@ struct StatsView: View {
         return min(2024, earliestData)
     }
 
-    private func daysJournaledCount(for year: Int) -> Int {
+    private func daysJournaledCount(in journaled: Set<Date>, for year: Int) -> Int {
         let calendar = Calendar.current
-        return journaledDays.filter { calendar.component(.year, from: $0) == year }.count
+        return journaled.filter { calendar.component(.year, from: $0) == year }.count
     }
 
     /// A calendar year laid out as week columns of 7 days each. Leading/trailing

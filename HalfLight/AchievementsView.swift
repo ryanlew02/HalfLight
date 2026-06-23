@@ -128,10 +128,13 @@ struct AchievementBadge: View {
     let achievement: Achievement
     let stats: AchievementStats
 
-    private var unlocked: Bool { achievement.isUnlocked(for: stats) }
-
     var body: some View {
-        VStack(spacing: DreamMetric.sm) {
+        // Resolve unlock state and progress once per render — these walk the
+        // dreamer's stats, so recomputing them several times per tile (and across
+        // a gridful of tiles) is wasted work while scrolling.
+        let unlocked = achievement.isUnlocked(for: stats)
+
+        return VStack(spacing: DreamMetric.sm) {
             AchievementMedallion(
                 symbol: achievement.symbol,
                 tint: achievement.tint,
@@ -177,7 +180,10 @@ struct AchievementBadge: View {
         // the medallion + title + detail + status row sit just under this.
         .frame(minHeight: 165)
         .padding(DreamMetric.md)
-        .dreamCard(glow: unlocked ? achievement.tint : nil)
+        // A flat card (no large colored glow): the medallion's own halo already
+        // marks a badge as earned, and dropping the big per-tile shadow keeps the
+        // grid smooth to scroll.
+        .dreamCard()
         .opacity(unlocked ? 1 : 0.85)
     }
 }
@@ -225,12 +231,13 @@ struct AchievementMedallion: View {
         .overlay(
             Circle().strokeBorder(ringFill, lineWidth: max(1.5, size * 0.045))
         )
-        // Soft colored bloom behind unlocked badges.
-        .background(
-            Circle()
-                .fill(tint)
-                .blur(radius: size * 0.26)
-                .opacity((unlocked && bloom) ? 0.4 : 0)
+        // Soft colored bloom behind unlocked badges. A circular shadow gives the
+        // same halo as the old blurred-circle background but is far cheaper to
+        // composite while scrolling a gridful of medallions.
+        .shadow(
+            color: (unlocked && bloom) ? tint.opacity(0.5) : .clear,
+            radius: size * 0.18,
+            y: size * 0.03
         )
     }
 
