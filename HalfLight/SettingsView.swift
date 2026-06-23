@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(SubscriptionManager.self) private var subscriptions
     @AppStorage("userName") private var userName = "Dreamer"
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("dailyReminderEnabled") private var dailyReminder = false
@@ -16,6 +17,23 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                NavigationLink {
+                    ProSettingsView()
+                } label: {
+                    SettingRow(
+                        title: "HalfLight Pro",
+                        systemImage: "sparkles",
+                        value: subscriptions.isSubscribed ? "Active" : "Upgrade"
+                    )
+                }
+            } footer: {
+                Text(subscriptions.isSubscribed
+                     ? "AI features are unlocked. Thank you for supporting HalfLight."
+                     : "Unlock AI dream analysis, auto-tags, and AI titles.")
+            }
+            .listRowBackground(Color.dreamSurface)
+
             Section {
                 NavigationLink {
                     NameSettingsView()
@@ -94,6 +112,65 @@ private struct SettingRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - HalfLight Pro
+
+/// Subscription status + management: upgrade (opens the paywall), restore, and a
+/// link to the system "Manage Subscription" sheet.
+struct ProSettingsView: View {
+    @Environment(SubscriptionManager.self) private var subscriptions
+    @State private var showPaywall = false
+
+    var body: some View {
+        Form {
+            Section {
+                HStack {
+                    Label("Status", systemImage: "sparkles")
+                    Spacer()
+                    Text(subscriptions.isSubscribed ? "Active" : "Not subscribed")
+                        .foregroundStyle(subscriptions.isSubscribed ? Color.dreamPrimary : .secondary)
+                }
+            } footer: {
+                Text(subscriptions.isSubscribed
+                     ? "AI dream analysis, auto-tags, and AI titles are unlocked."
+                     : "Subscribe to unlock AI dream analysis, auto-tags, and AI titles.")
+            }
+            .listRowBackground(Color.dreamSurface)
+
+            Section {
+                if !subscriptions.isSubscribed {
+                    Button {
+                        SoundManager.shared.play(.tap)
+                        showPaywall = true
+                    } label: {
+                        Label("Upgrade to Pro", systemImage: "crown")
+                    }
+                }
+                Button {
+                    Task { await subscriptions.restore() }
+                } label: {
+                    Label("Restore Purchases", systemImage: "arrow.clockwise")
+                }
+                if subscriptions.isSubscribed {
+                    Button {
+                        Task { await subscriptions.showManageSubscriptions() }
+                    } label: {
+                        Label("Manage Subscription", systemImage: "gear")
+                    }
+                }
+            }
+            .listRowBackground(Color.dreamSurface)
+        }
+        .scrollContentBackground(.hidden)
+        .background { DreamBackground() }
+        .tint(.dreamPrimary)
+        .navigationTitle("HalfLight Pro")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .sheet(isPresented: $showPaywall) { PaywallView() }
     }
 }
 
@@ -528,6 +605,7 @@ struct AboutSettingsView: View {
         SettingsView()
     }
     .environment(AuthService())
+    .environment(SubscriptionManager())
 }
 
 #Preview("Dark") {
@@ -535,5 +613,6 @@ struct AboutSettingsView: View {
         SettingsView()
     }
     .environment(AuthService())
+    .environment(SubscriptionManager())
     .preferredColorScheme(.dark)
 }

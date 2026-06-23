@@ -47,6 +47,21 @@ export async function guardAIRequest(
     return deny(401, "Your session has expired. Please sign in again.");
   }
 
+  // AI features are HalfLight Pro. Confirm the dreamer has a live entitlement
+  // before spending on Claude, so a leaked publishable key + token still can't
+  // run up the Anthropic bill. The entitlement is written only by the
+  // subscription edge functions after verifying Apple's signed payloads.
+  const { data: subscribed, error: subError } = await admin.rpc("has_active_subscription", {
+    p_user_id: user.id,
+  });
+  if (subError) {
+    console.error("has_active_subscription failed:", subError);
+    return deny(500, "Couldn't check your subscription. Please try again.");
+  }
+  if (subscribed !== true) {
+    return deny(402, "Subscribe to HalfLight Pro to use AI features.");
+  }
+
   // Atomically consume one of today's credits.
   const { data: allowed, error: limitError } = await admin.rpc("consume_ai_credit", {
     p_user_id: user.id,

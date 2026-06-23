@@ -9,8 +9,8 @@ import Foundation
 
 enum AppTab: CaseIterable, Identifiable {
     case home
-    case lucid
     case journal
+    case lucid
     case feed
     case profile
 

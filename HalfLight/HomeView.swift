@@ -1019,6 +1019,7 @@ private struct TipCard: View {
         .environment(PreviewData.store)
         .environment(AuthService())
         .environment(AppRouter())
+        .environment(SubscriptionManager())
 }
 
 #Preview("Dark") {
@@ -1027,5 +1028,6 @@ private struct TipCard: View {
         .environment(PreviewData.store)
         .environment(AuthService())
         .environment(AppRouter())
+        .environment(SubscriptionManager())
         .preferredColorScheme(.dark)
 }

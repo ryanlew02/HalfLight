@@ -31,6 +31,7 @@ private struct RootView: View {
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @State private var store: DreamStore?
     @State private var auth = AuthService()
+    @State private var subscriptions = SubscriptionManager()
 
     var body: some View {
         Group {
@@ -46,6 +47,7 @@ private struct RootView: View {
                 }
                 .environment(store)
                 .environment(auth)
+                .environment(subscriptions)
                 .tint(.dreamPrimary)
                 .preferredColorScheme(theme.colorScheme)
             } else {
@@ -64,6 +66,9 @@ private struct RootView: View {
                 // uploaded, so dreams made public on one device aren't private here.
                 store?.republishVisibilityIfNeeded()
             }
+            // Load products and begin observing entitlement changes for the
+            // AI-feature paywall.
+            await subscriptions.start()
             // Restoring may flip auth to signed-in, which triggers a reconcile
             // via onChange below.
             await auth.restore()

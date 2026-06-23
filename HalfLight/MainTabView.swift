@@ -204,6 +204,7 @@ struct MainTabView: View {
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
         .environment(AuthService())
+        .environment(SubscriptionManager())
 }
 
 #Preview("Dark") {
@@ -211,6 +212,7 @@ struct MainTabView: View {
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
         .environment(AuthService())
+        .environment(SubscriptionManager())
         .preferredColorScheme(.dark)
 }
 

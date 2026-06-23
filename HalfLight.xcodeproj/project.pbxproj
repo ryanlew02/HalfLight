@@ -38,7 +38,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		249705342FDE065D00D64129 /* HalfLight.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HalfLight.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		249705342FDE065D00D64129 /* HalfLight: AI Dream Journal .app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HalfLight: AI Dream Journal .app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A45B4FC02FEADD790008CEEC /* HalfLightWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HalfLightWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A45B4FC12FEADD790008CEEC /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		A45B4FC32FEADD790008CEEC /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -110,7 +110,7 @@
 		249705352FDE065D00D64129 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				249705342FDE065D00D64129 /* HalfLight.app */,
+				249705342FDE065D00D64129 /* HalfLight: AI Dream Journal .app */,
 				A45B4FC02FEADD790008CEEC /* HalfLightWidgetsExtension.appex */,
 			);
 			name = Products;
@@ -151,7 +151,7 @@
 				A40223772FE33DDB0080AF4B /* Supabase */,
 			);
 			productName = HalfLight;
-			productReference = 249705342FDE065D00D64129 /* HalfLight.app */;
+			productReference = 249705342FDE065D00D64129 /* HalfLight: AI Dream Journal .app */;
 			productType = "com.apple.product-type.application";
 		};
 		A45B4FBF2FEADD790008CEEC /* HalfLightWidgetsExtension */ = {
@@ -406,7 +406,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = LanternHours.HalfLight;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "HalfLight: AI Dream Journal ";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -452,7 +452,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = LanternHours.HalfLight;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "HalfLight: AI Dream Journal ";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

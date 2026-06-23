@@ -22,7 +22,10 @@ struct AddDreamView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(SubscriptionManager.self) private var subscriptions
     @State private var showDeleteConfirm = false
+    /// Presented when a non-subscriber taps an AI feature.
+    @State private var showPaywall = false
 
     @State private var title: String
     @State private var entry: String
@@ -210,6 +213,7 @@ struct AddDreamView: View {
                 if phase != .active { transcriber.stop() }
             }
             .onDisappear { transcriber.stop() }
+            .sheet(isPresented: $showPaywall) { PaywallView() }
             .navigationTitle(isEditing ? "Edit Dream" : "New Dream")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -276,7 +280,7 @@ struct AddDreamView: View {
                     if analyzer.isSuggestingTitle {
                         ProgressView()
                     } else {
-                        Image(systemName: "sparkles")
+                        Image(systemName: subscriptions.isSubscribed ? "sparkles" : "lock.fill")
                     }
                 }
                 .font(.dreamBody(15, .semibold))
@@ -291,7 +295,19 @@ struct AddDreamView: View {
         }
     }
 
+    /// AI features are HalfLight Pro: a non-subscriber tap opens the paywall
+    /// instead of spending on the analysis. Returns true when Pro is active.
+    private func requirePro() -> Bool {
+        guard subscriptions.isSubscribed else {
+            SoundManager.shared.play(.tap)
+            showPaywall = true
+            return false
+        }
+        return true
+    }
+
     private func autoTitle() {
+        guard requirePro() else { return }
         SoundManager.shared.play(.tap)
         Task {
             guard let suggested = await analyzer.suggestTitle(
@@ -322,7 +338,7 @@ struct AddDreamView: View {
                     if analyzer.isSuggestingTags {
                         ProgressView()
                     } else {
-                        Image(systemName: "sparkles")
+                        Image(systemName: subscriptions.isSubscribed ? "sparkles" : "lock.fill")
                     }
                 }
                 .font(.dreamBody(15, .semibold))
@@ -340,6 +356,7 @@ struct AddDreamView: View {
     }
 
     private func autoTag() {
+        guard requirePro() else { return }
         SoundManager.shared.play(.tap)
         Task {
             guard let suggested = await analyzer.suggestTags(
@@ -421,7 +438,7 @@ struct AddDreamView: View {
                         if analyzer.isAnalyzing {
                             ProgressView()
                         } else {
-                            Image(systemName: "sparkles")
+                            Image(systemName: subscriptions.isSubscribed ? "sparkles" : "lock.fill")
                         }
                     }
                     .font(.dreamBody(15, .semibold))
@@ -444,6 +461,7 @@ struct AddDreamView: View {
     }
 
     private func analyze() {
+        guard requirePro() else { return }
         SoundManager.shared.play(.tap)
         Task {
             guard let result = await analyzer.analyze(

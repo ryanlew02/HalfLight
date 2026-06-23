@@ -217,7 +217,7 @@ private struct LucidLessonMap: View {
                 }
 
                 ForEach(Array(lessons.enumerated()), id: \.element.id) { index, lesson in
-                    LessonNode(icon: lesson.icon, status: status(lesson)) {
+                    LessonNode(lesson: lesson, status: status(lesson)) {
                         onTap(lesson)
                     }
                     .position(points[index])
@@ -236,17 +236,72 @@ private struct LucidLessonMap: View {
     }
 }
 
-private struct LessonNode: View {
-    let icon: String
+/// Callout shown when a lesson node is tapped: the lesson name, the XP it awards,
+/// and a Start button that begins the lesson (disabled while the lesson is locked).
+private struct LessonInfoCallout: View {
+    let lesson: LucidLessonContent
     let status: LucidLessonStatus
-    let onTap: () -> Void
+    let onStart: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(lesson.title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(Color.dreamText)
+
+            if status == .locked {
+                Text("Complete earlier lessons to unlock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button(action: onStart) {
+                HStack(spacing: 8) {
+                    Text(status == .completed ? "Review" : "Start")
+                        .font(.subheadline.weight(.bold))
+
+                    Spacer(minLength: 0)
+
+                    Text("+\(lesson.xp) XP")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity)
+                .background(
+                    Capsule().fill(LinearGradient(
+                        colors: [.dreamPrimary, .dreamAccent],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(status == .locked)
+            .opacity(status == .locked ? 0.4 : 1)
+        }
+        .padding(16)
+        .frame(maxWidth: 260, alignment: .leading)
+    }
+}
+
+private struct LessonNode: View {
+    let lesson: LucidLessonContent
+    let status: LucidLessonStatus
+    /// Called when the dreamer taps Start in the callout to begin the lesson.
+    let onStart: () -> Void
 
     @State private var pulse = false
+    /// Tapping a node reveals a callout with the lesson name, XP, and a Start button.
+    @State private var showInfo = false
 
     private var size: CGFloat { status == .current ? 74 : 72 }
 
     var body: some View {
-        Button(action: onTap) {
+        Button {
+            showInfo = true
+        } label: {
             ZStack {
                 if status == .current {
                     Circle()
@@ -261,7 +316,7 @@ private struct LessonNode: View {
                     .overlay(Circle().stroke(ringColor, lineWidth: 4))
                     .shadow(color: shadowColor, radius: 8, y: 4)
 
-                Image(systemName: status == .locked ? "lock.fill" : icon)
+                Image(systemName: status == .locked ? "lock.fill" : lesson.icon)
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(iconColor)
 
@@ -275,6 +330,13 @@ private struct LessonNode: View {
             }
         }
         .buttonStyle(.plain)
+        .popover(isPresented: $showInfo, arrowEdge: .top) {
+            LessonInfoCallout(lesson: lesson, status: status) {
+                showInfo = false
+                onStart()
+            }
+            .presentationCompactAdaptation(.popover)
+        }
         .onAppear {
             guard status == .current else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {

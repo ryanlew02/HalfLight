@@ -546,6 +546,7 @@ struct ThemeDreamsView: View {
         .environment(PreviewData.store)
         .environment(AppRouter())
         .environment(AuthService())
+        .environment(SubscriptionManager())
 }
 
 #Preview("Dark") {
@@ -554,5 +555,6 @@ struct ThemeDreamsView: View {
         .environment(PreviewData.store)
         .environment(AppRouter())
         .environment(AuthService())
+        .environment(SubscriptionManager())
         .preferredColorScheme(.dark)
 }

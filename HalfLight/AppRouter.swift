@@ -31,7 +31,7 @@ struct ClaimReward: Identifiable, Equatable {
 @Observable
 final class AppRouter {
     /// The currently selected bottom tab.
-    var tab: AppTab = .lucid
+    var tab: AppTab = .home
 
     /// Set when the Profile screen should push the Progress screen (e.g. from the
     /// Home quests shortcut). Consumed (and reset) by the Profile screen.

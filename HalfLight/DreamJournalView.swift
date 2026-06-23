@@ -500,11 +500,13 @@ struct DreamCard: View {
     DreamJournalView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(SubscriptionManager())
 }
 
 #Preview("Dark") {
     DreamJournalView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(SubscriptionManager())
         .preferredColorScheme(.dark)
 }

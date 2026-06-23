@@ -440,12 +440,8 @@ struct StatsView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: squareSpacing) {
                         ForEach(Array(weeks.enumerated()), id: \.offset) { index, week in
-                            VStack(spacing: squareSpacing) {
-                                ForEach(Array(week.enumerated()), id: \.offset) { _, day in
-                                    daySquare(for: day, journaled: journaled)
-                                }
-                            }
-                            .id(index)
+                            weekColumn(week, journaled: journaled)
+                                .id(index)
                         }
                     }
                     .padding(.vertical, 2)
@@ -478,19 +474,29 @@ struct StatsView: View {
         }
     }
 
-    private func daySquare(for day: Date?, journaled: Set<Date>) -> some View {
-        let isJournaled = day.map { journaled.contains($0) } ?? false
-        return RoundedRectangle(cornerRadius: 2)
-            .fill(isJournaled ? Color.dreamPrimary : Color.clear)
-            .frame(width: squareSize, height: squareSize)
-            .overlay {
-                // Empty real days get a faint outline so the grid stays legible;
-                // padding cells (nil) stay fully blank.
-                if day != nil, !isJournaled {
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(Color.dreamText.opacity(0.12), lineWidth: 1)
+    /// One week's column of day squares, drawn in a single `Canvas` so the grid
+    /// is ~53 lightweight draw passes instead of ~370 individual shape views — the
+    /// difference that keeps the Progress screen smooth while scrolling. Journaled
+    /// days fill in the accent; other real days get a faint outline; padding cells
+    /// (nil, outside the year) stay blank.
+    private func weekColumn(_ week: [Date?], journaled: Set<Date>) -> some View {
+        let height = squareSize * 7 + squareSpacing * 6
+        return Canvas { context, _ in
+            for (row, day) in week.enumerated() {
+                guard let day else { continue }
+                let y = CGFloat(row) * (squareSize + squareSpacing)
+                let path = Path(
+                    roundedRect: CGRect(x: 0, y: y, width: squareSize, height: squareSize),
+                    cornerRadius: 2
+                )
+                if journaled.contains(day) {
+                    context.fill(path, with: .color(.dreamPrimary))
+                } else {
+                    context.stroke(path, with: .color(.dreamText.opacity(0.12)), lineWidth: 1)
                 }
             }
+        }
+        .frame(width: squareSize, height: height)
     }
 
     // MARK: - Computed data

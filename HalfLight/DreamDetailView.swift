@@ -18,10 +18,13 @@ struct DreamDetailView: View {
 
     @Environment(DreamStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(SubscriptionManager.self) private var subscriptions
     @State private var isEditing = false
     @State private var analyzer = DreamAnalyzer()
     /// The author profile to push when the header is tapped.
     @State private var profileToOpen: FeedAuthor?
+    /// Presented when a non-subscriber taps Analyze with AI.
+    @State private var showPaywall = false
 
     var body: some View {
         ScrollView {
@@ -76,6 +79,7 @@ struct DreamDetailView: View {
                 store.delete(dream)
             }
         }
+        .sheet(isPresented: $showPaywall) { PaywallView() }
     }
 
     // MARK: - Author (feed only)
@@ -204,7 +208,7 @@ struct DreamDetailView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Image(systemName: "sparkles")
+                            Image(systemName: subscriptions.isSubscribed ? "sparkles" : "lock.fill")
                         }
                         Text(analyzer.isAnalyzing ? "Analyzing…" : "Analyze with AI")
                     }
@@ -223,6 +227,11 @@ struct DreamDetailView: View {
     }
 
     private func analyze() {
+        // AI analysis is HalfLight Pro: send non-subscribers to the paywall.
+        guard subscriptions.isSubscribed else {
+            showPaywall = true
+            return
+        }
         // The button's style plays the press tap; we add the result sounds below.
         Task {
             guard let result = await analyzer.analyze(
@@ -328,6 +337,7 @@ private struct FlowLayout: Layout {
     .modelContainer(PreviewData.container)
     .environment(PreviewData.store)
     .environment(AuthService())
+    .environment(SubscriptionManager())
 }
 
 #Preview("Dark") {
@@ -337,5 +347,6 @@ private struct FlowLayout: Layout {
     .modelContainer(PreviewData.container)
     .environment(PreviewData.store)
     .environment(AuthService())
+    .environment(SubscriptionManager())
     .preferredColorScheme(.dark)
 }
