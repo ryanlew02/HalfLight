@@ -322,7 +322,7 @@ struct DreamJournalView: View {
             HStack(spacing: 5) {
                 Image(systemName: symbol)
                     .font(.system(size: 11, weight: .semibold))
-                Text(label)
+                Text(localized(label))
                     .font(.dreamBody(13, .semibold))
             }
             .foregroundStyle(isSelected ? .white : tint)
@@ -440,7 +440,7 @@ struct DreamCard: View {
         VStack(alignment: .leading, spacing: DreamMetric.sm) {
             HStack {
                 Label {
-                    Text(dream.mood.rawValue)
+                    Text(localized(dream.mood.rawValue))
                         .font(.dreamCaption)
                 } icon: {
                     Image(systemName: dream.mood.symbol)

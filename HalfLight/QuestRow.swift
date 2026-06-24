@@ -25,7 +25,7 @@ struct QuestRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(quest.title)
+                    Text(localized(quest.title))
                         .font(.dreamBody(14, .semibold))
                         .foregroundStyle(Color.dreamText)
                     Spacer()
@@ -36,7 +36,7 @@ struct QuestRow: View {
                     }
                 }
 
-                Text(quest.detail)
+                Text(localized(quest.detail))
                     .font(.dreamBody(11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

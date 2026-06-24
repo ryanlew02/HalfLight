@@ -127,17 +127,17 @@ struct LucidLessonView: View {
                     .foregroundStyle(.white)
             }
 
-            Text(lesson.title)
+            Text(localized(lesson.title))
                 .font(.dreamDisplay(26))
                 .foregroundStyle(Color.dreamText)
 
-            Text(lesson.hook)
+            Text(localized(lesson.hook))
                 .font(.dreamSerif(18, italic: true))
                 .foregroundStyle(Color.dreamPrimary)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(lesson.teach)
+            Text(localized(lesson.teach))
                 .font(.dreamBody(16))
                 .foregroundStyle(.secondary)
                 .lineSpacing(5)
@@ -155,7 +155,7 @@ struct LucidLessonView: View {
                     }
                     .foregroundStyle(Color.dreamAccent)
 
-                    Text(lesson.didYouKnow)
+                    Text(localized(lesson.didYouKnow))
                         .font(.dreamBody(14))
                         .foregroundStyle(Color.dreamText.opacity(0.85))
                         .lineSpacing(4)
@@ -176,7 +176,7 @@ struct LucidLessonView: View {
         VStack(alignment: .leading, spacing: DreamMetric.lg) {
             stepEyebrow("Quick check")
 
-            Text(lesson.quiz.question)
+            Text(localized(lesson.quiz.question))
                 .font(.dreamDisplay(20))
                 .foregroundStyle(Color.dreamText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -191,7 +191,7 @@ struct LucidLessonView: View {
                 let correct = choices[selected].isCorrect
                 HStack(alignment: .top, spacing: DreamMetric.sm) {
                     Image(systemName: correct ? "checkmark.circle.fill" : "info.circle.fill")
-                    Text(lesson.quiz.why)
+                    Text(localized(lesson.quiz.why))
                         .font(.dreamBody(13, .medium))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -236,7 +236,7 @@ struct LucidLessonView: View {
             withAnimation(.easeInOut(duration: 0.2)) { selectedAnswer = index }
         } label: {
             HStack(spacing: DreamMetric.md) {
-                Text(choice.text)
+                Text(localized(choice.text))
                     .font(.dreamBody(15, .medium))
                     .foregroundStyle(Color.dreamText)
                     .multilineTextAlignment(.leading)
@@ -264,7 +264,7 @@ struct LucidLessonView: View {
         VStack(alignment: .leading, spacing: DreamMetric.lg) {
             stepEyebrow("Reflect")
 
-            Text(lesson.reflection)
+            Text(localized(lesson.reflection))
                 .font(.dreamDisplay(20))
                 .foregroundStyle(Color.dreamText)
                 .lineSpacing(3)
@@ -294,7 +294,7 @@ struct LucidLessonView: View {
                 Image(systemName: "moon.stars.fill")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Color.dreamPrimary)
-                Text(lesson.challenge)
+                Text(localized(lesson.challenge))
                     .font(.dreamBody(17, .medium))
                     .foregroundStyle(Color.dreamText)
                     .lineSpacing(4)
@@ -336,7 +336,7 @@ struct LucidLessonView: View {
                 .textCase(.uppercase)
                 .foregroundStyle(Color.dreamAccent)
 
-            Text(lesson.done)
+            Text(localized(lesson.done))
                 .font(.dreamSerif(20))
                 .foregroundStyle(Color.dreamText)
                 .multilineTextAlignment(.center)
@@ -354,7 +354,7 @@ struct LucidLessonView: View {
                 HStack(alignment: .top, spacing: DreamMetric.sm) {
                     Image(systemName: "lightbulb.fill")
                         .foregroundStyle(Color.dreamAccent)
-                    Text(lesson.tip)
+                    Text(localized(lesson.tip))
                         .font(.dreamBody(13, .medium))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

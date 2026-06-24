@@ -112,7 +112,7 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: DreamMetric.md) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(rank.name)
+                        Text(localized(rank.name))
                             .font(.dreamDisplay(18, .bold))
                         Text("Level \(level)")
                             .font(.dreamBody(12, .semibold))

@@ -18,11 +18,11 @@ enum AppTab: CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .home: "Home"
-        case .lucid: "Lucid"
-        case .journal: "Journal"
-        case .feed: "Feed"
-        case .profile: "Profile"
+        case .home: localized("Home")
+        case .lucid: localized("Lucid")
+        case .journal: localized("Journal")
+        case .feed: localized("Feed")
+        case .profile: localized("Profile")
         }
     }
 

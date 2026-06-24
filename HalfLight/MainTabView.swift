@@ -89,7 +89,7 @@ struct MainTabView: View {
             .onChange(of: currentLevel) { _, newLevel in
                 guard celebratedLevel != 0, newLevel > celebratedLevel else { return }
                 let rank = DreamProgression.rank(forLevel: newLevel)
-                router.presentLevelUp(level: newLevel, rank: rank.name)
+                router.presentLevelUp(level: newLevel, rank: localized(rank.name))
                 celebratedLevel = newLevel
             }
             // Keep reminders in step with usage: app foreground, journaling activity,

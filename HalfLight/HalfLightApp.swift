@@ -32,6 +32,7 @@ private struct RootView: View {
     @State private var store: DreamStore?
     @State private var auth = AuthService()
     @State private var subscriptions = SubscriptionManager()
+    @State private var language = LanguageManager.shared
 
     var body: some View {
         Group {
@@ -48,8 +49,15 @@ private struct RootView: View {
                 .environment(store)
                 .environment(auth)
                 .environment(subscriptions)
+                .environment(language)
                 .tint(.dreamPrimary)
                 .preferredColorScheme(theme.colorScheme)
+                // Drive number/date formatting and text direction from the
+                // chosen language, and rebuild the whole tree on change so every
+                // `Text` re-reads the now-repointed localized bundle.
+                .environment(\.locale, language.current.locale)
+                .environment(\.layoutDirection, language.current.isRTL ? .rightToLeft : .leftToRight)
+                .id(language.current)
             } else {
                 Color.clear
             }

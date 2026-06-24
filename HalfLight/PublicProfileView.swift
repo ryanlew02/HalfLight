@@ -159,7 +159,7 @@ struct PublicProfileView: View {
         HStack(spacing: 5) {
             Image(systemName: "moon.stars.fill")
                 .font(.system(size: 10, weight: .bold))
-            Text("Level \(level) · \(rank.name)")
+            Text("Level \(level) · \(localized(rank.name))")
                 .font(.dreamBody(12, .bold))
         }
         .foregroundStyle(Color.dreamPrimary)

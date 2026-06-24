@@ -131,7 +131,7 @@ struct DreamDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: DreamMetric.sm) {
             Label {
-                Text(dream.mood.rawValue)
+                Text(localized(dream.mood.rawValue))
                     .font(.dreamBody(14, .semibold))
             } icon: {
                 Image(systemName: dream.mood.symbol)

@@ -119,7 +119,7 @@ struct LevelsView: View {
                 .frame(width: 28)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(rank.name)
+                Text(localized(rank.name))
                     .font(.dreamRowTitle)
                 Text("Level \(rank.minLevel)+")
                     .font(.dreamBody(12))

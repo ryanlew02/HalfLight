@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("dailyReminderEnabled") private var dailyReminder = false
     @AppStorage("soundEffectsEnabled") private var soundEnabled = true
+    @Environment(LanguageManager.self) private var language
 
     var body: some View {
         Form {
@@ -24,7 +25,7 @@ struct SettingsView: View {
                     SettingRow(
                         title: "HalfLight Pro",
                         systemImage: "sparkles",
-                        value: subscriptions.isSubscribed ? "Active" : "Upgrade"
+                        value: subscriptions.isSubscribed ? localized("Active") : localized("Upgrade")
                     )
                 }
             } footer: {
@@ -52,12 +53,17 @@ struct SettingsView: View {
                 NavigationLink {
                     NotificationSettingsView()
                 } label: {
-                    SettingRow(title: "Notifications", systemImage: "bell", value: dailyReminder ? "On" : "Off")
+                    SettingRow(title: "Notifications", systemImage: "bell", value: dailyReminder ? localized("On") : localized("Off"))
                 }
                 NavigationLink {
                     SoundSettingsView()
                 } label: {
-                    SettingRow(title: "Sound & Haptics", systemImage: "speaker.wave.2", value: soundEnabled ? "On" : "Off")
+                    SettingRow(title: "Sound & Haptics", systemImage: "speaker.wave.2", value: soundEnabled ? localized("On") : localized("Off"))
+                }
+                NavigationLink {
+                    LanguageSettingsView()
+                } label: {
+                    SettingRow(title: "Language", systemImage: "globe", value: language.current.nativeName)
                 }
             }
             .listRowBackground(Color.dreamSurface)
@@ -66,7 +72,7 @@ struct SettingsView: View {
                 NavigationLink {
                     AccountSettingsView()
                 } label: {
-                    SettingRow(title: "Account", systemImage: "person.crop.circle", value: auth.isSignedIn ? (auth.email ?? "Signed in") : "Sign in")
+                    SettingRow(title: "Account", systemImage: "person.crop.circle", value: auth.isSignedIn ? (auth.email ?? localized("Signed in")) : localized("Sign in"))
                 }
                 NavigationLink {
                     AboutSettingsView()
@@ -99,7 +105,7 @@ struct SettingsView: View {
 
 /// A settings menu row: icon + title on the left, optional current value on the right.
 private struct SettingRow: View {
-    let title: String
+    let title: LocalizedStringKey
     let systemImage: String
     let value: String?
 
@@ -362,6 +368,45 @@ struct SoundSettingsView: View {
     }
 }
 
+// MARK: - Language
+
+struct LanguageSettingsView: View {
+    @Environment(LanguageManager.self) private var language
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(AppLanguage.allCases) { option in
+                    Button {
+                        SoundManager.shared.play(.tap)
+                        language.current = option
+                    } label: {
+                        HStack {
+                            Text(option.nativeName)
+                                .foregroundStyle(Color.dreamText)
+                            Spacer()
+                            if language.current == option {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.dreamPrimary)
+                            }
+                        }
+                    }
+                }
+            } footer: {
+                Text("Changes apply instantly across the app. Your dreams stay in the language you wrote them.")
+            }
+            .listRowBackground(Color.dreamSurface)
+        }
+        .scrollContentBackground(.hidden)
+        .background { DreamBackground() }
+        .tint(.dreamPrimary)
+        .navigationTitle("Language")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+}
+
 // MARK: - Account
 
 struct AccountSettingsView: View {
@@ -606,6 +651,7 @@ struct AboutSettingsView: View {
     }
     .environment(AuthService())
     .environment(SubscriptionManager())
+    .environment(LanguageManager.shared)
 }
 
 #Preview("Dark") {
@@ -614,5 +660,6 @@ struct AboutSettingsView: View {
     }
     .environment(AuthService())
     .environment(SubscriptionManager())
+    .environment(LanguageManager.shared)
     .preferredColorScheme(.dark)
 }

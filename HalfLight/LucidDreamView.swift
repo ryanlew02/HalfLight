@@ -112,10 +112,10 @@ private struct LucidSectionHeader: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(section.title)
+                Text(localized(section.title))
                     .font(.dreamCardTitle)
                     .foregroundStyle(isUnlocked ? Color.dreamText : .secondary)
-                Text(section.subtitle)
+                Text(localized(section.subtitle))
                     .font(.dreamCaption)
                     .foregroundStyle(.secondary)
             }
@@ -245,7 +245,7 @@ private struct LessonInfoCallout: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(lesson.title)
+            Text(localized(lesson.title))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(Color.dreamText)
 

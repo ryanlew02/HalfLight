@@ -113,7 +113,7 @@ struct AddDreamView: View {
                 Section("Mood") {
                     Picker("Mood", selection: $mood) {
                         ForEach(Dream.Mood.allCases) { mood in
-                            Label(mood.rawValue, systemImage: mood.symbol)
+                            Label(localized(mood.rawValue), systemImage: mood.symbol)
                                 .tag(mood)
                         }
                     }

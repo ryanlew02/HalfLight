@@ -126,15 +126,17 @@ struct HomeView: View {
 
     private var greetingText: String {
         switch Calendar.current.component(.hour, from: .now) {
-        case 5..<12: "Good morning"
-        case 12..<17: "Good afternoon"
-        case 17..<22: "Good evening"
-        default: "Good night"
+        case 5..<12: localized("Good morning")
+        case 12..<17: localized("Good afternoon")
+        case 17..<22: localized("Good evening")
+        default: localized("Good night")
         }
     }
 
     private var greetingEyebrow: String {
-        dreams.isEmpty ? "Your dream journal" : "\(dreams.count) dreams remembered"
+        dreams.isEmpty
+            ? localized("Your dream journal")
+            : localized("%lld dreams remembered", dreams.count)
     }
 
     private var greeting: some View {
@@ -311,7 +313,7 @@ struct HomeView: View {
                             .fill(dream.mood.tint)
                             .frame(width: 8, height: 8)
                             .shadow(color: dream.mood.tint.opacity(0.7), radius: 3)
-                        Text(dream.mood.rawValue)
+                        Text(localized(dream.mood.rawValue))
                             .font(.dreamMono(11))
                             .foregroundStyle(Color.dreamText)
                     }
@@ -505,7 +507,7 @@ struct HomeView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Eyebrow("Quest complete", color: quest.tint, size: 9.5, tracking: 1.4)
-                Text(quest.title)
+                Text(localized(quest.title))
                     .font(.dreamGrotesk(15, .semibold))
                     .foregroundStyle(Color.dreamText)
                     .lineLimit(1)
@@ -556,7 +558,7 @@ struct HomeView: View {
                         .font(.dreamMono(10, .semibold))
                         .foregroundStyle(quest.tint)
                 }
-                Text(quest.title)
+                Text(localized(quest.title))
                     .font(.dreamGrotesk(15, .semibold))
                     .foregroundStyle(Color.dreamText)
                     .lineLimit(1)
@@ -598,7 +600,7 @@ struct HomeView: View {
             return
         }
         questBankedXP = QuestRewards.claim(quest, weekStart: Quest.weekStart(), currentTotal: questBankedXP)
-        router.presentClaim(xp: quest.xp, title: quest.title)
+        router.presentClaim(xp: quest.xp, title: localized(quest.title))
     }
 
     // MARK: - Random dream tile ("wander back")
@@ -855,7 +857,7 @@ struct Eyebrow: View {
     }
 
     var body: some View {
-        Text(text)
+        Text(localized(text))
             .font(.dreamMono(size, .medium))
             .tracking(tracking)
             .textCase(.uppercase)

@@ -98,7 +98,7 @@ struct FeedPostCard: View {
 
     private func moodLabel(_ mood: Dream.Mood) -> some View {
         Label {
-            Text(mood.rawValue).font(.dreamBody(13, .semibold))
+            Text(localized(mood.rawValue)).font(.dreamBody(13, .semibold))
         } icon: {
             Image(systemName: mood.symbol)
         }
