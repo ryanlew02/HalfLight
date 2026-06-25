@@ -27,6 +27,12 @@ final class Comment {
     var text: String
     var createdAt: Date
 
+    // MARK: Engagement (local for now; a real backend will own the count)
+
+    var likeCount: Int = 0
+    /// Whether the current dreamer has liked this comment.
+    var isLiked: Bool = false
+
     init(
         id: UUID = UUID(),
         postID: UUID,
@@ -34,7 +40,9 @@ final class Comment {
         authorName: String,
         authorPhoto: Data? = nil,
         text: String,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        likeCount: Int = 0,
+        isLiked: Bool = false
     ) {
         self.id = id
         self.postID = postID
@@ -43,5 +51,7 @@ final class Comment {
         self.authorPhoto = authorPhoto
         self.text = text
         self.createdAt = createdAt
+        self.likeCount = likeCount
+        self.isLiked = isLiked
     }
 }

@@ -81,6 +81,7 @@ struct FeedCommentRecord: Codable, Sendable {
     var authorName: String
     var text: String
     var createdAt: Date
+    var likeCount: Int = 0
 
     enum CodingKeys: String, CodingKey {
         case id, text
@@ -89,6 +90,7 @@ struct FeedCommentRecord: Codable, Sendable {
         case authorUsername = "author_username"
         case authorName = "author_name"
         case createdAt = "created_at"
+        case likeCount = "like_count"
     }
 }
 
@@ -111,6 +113,8 @@ protocol FeedSyncing: Sendable {
     func fetchComments(postID: UUID) async throws -> [FeedCommentRecord]
     func addComment(_ comment: FeedCommentRecord) async throws
     func deleteComment(id: UUID) async throws
+    func likedCommentIDs(postID: UUID) async throws -> [UUID]
+    func setCommentLike(commentID: UUID, liked: Bool) async throws
 
     // Follows
     func followedUsernames() async throws -> [String]
@@ -209,6 +213,32 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
             .execute()
     }
 
+    func likedCommentIDs(postID: UUID) async throws -> [UUID] {
+        guard let uid = await currentUserID() else { return [] }
+        let rows: [CommentLikeRow] = try await client.from("feed_comment_likes")
+            .select("comment_id, feed_comments!inner(post_id)")
+            .eq("user_id", value: uid.uuidString)
+            .eq("feed_comments.post_id", value: postID.uuidString)
+            .execute()
+            .value
+        return rows.map(\.commentID)
+    }
+
+    func setCommentLike(commentID: UUID, liked: Bool) async throws {
+        guard let uid = await currentUserID() else { return }
+        if liked {
+            try await client.from("feed_comment_likes")
+                .upsert(CommentLikeRow(userID: uid, commentID: commentID), onConflict: "user_id,comment_id")
+                .execute()
+        } else {
+            try await client.from("feed_comment_likes")
+                .delete()
+                .eq("user_id", value: uid.uuidString)
+                .eq("comment_id", value: commentID.uuidString)
+                .execute()
+        }
+    }
+
     // MARK: Follows
 
     func followedUsernames() async throws -> [String] {
@@ -254,6 +284,15 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
         enum CodingKeys: String, CodingKey {
             case userID = "user_id"
             case postID = "post_id"
+        }
+    }
+
+    private struct CommentLikeRow: Codable {
+        var userID: UUID? = nil
+        let commentID: UUID
+        enum CodingKeys: String, CodingKey {
+            case userID = "user_id"
+            case commentID = "comment_id"
         }
     }
 

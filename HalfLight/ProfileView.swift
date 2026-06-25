@@ -29,15 +29,23 @@ struct ProfileView: View {
     @State private var showAuth = false
     /// Drives the push into the Progress screen (from the card or the Home shortcut).
     @State private var showingProgress = false
+    /// Bumped when leaving the Profile tab to reset its NavigationStack to the root,
+    /// so returning to Profile always lands on the profile — not whatever was pushed
+    /// (Settings, a theme, …). Value-less NavigationLinks aren't tracked by a path
+    /// binding, so re-identifying the stack is the reliable way to pop them all.
+    @State private var navResetID = UUID()
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
+                    // Signed out: sign-in prompt sits right under the header, above
+                    // Progress and Top themes. Signed in: the bio takes its place
+                    // (accountCard renders nothing, bioCard renders nothing if empty).
+                    accountCard
                     bioCard
                     progressCard
-                    accountCard
                     themesCard
                 }
                 .padding(20)
@@ -50,18 +58,20 @@ struct ProfileView: View {
             }
             .onAppear { consumeProgressIntent() }
             .onChange(of: router.openProgress) { _, _ in consumeProgressIntent() }
-            // Leaving the Profile tab drops any pushed Progress screen, so coming
-            // back to Profile lands on the root rather than re-showing Progress
-            // (the tab's view stays alive, so its navigation would otherwise persist).
-            // Deferred to the next runloop so the pop isn't swept into the tab-switch
-            // animation (which would otherwise show Progress sliding closed), and with
-            // animations disabled so it just vanishes off-screen — the new tab appears.
+            // Leaving the Profile tab resets its navigation, so coming back lands on
+            // the root rather than whatever was pushed (Settings, Progress, a theme).
+            // The tab's view stays alive, so its navigation would otherwise persist.
+            // Deferred to the next runloop and with animations disabled so the reset
+            // happens off-screen (after the tab-switch) instead of animating closed.
             .onChange(of: router.tab) { _, tab in
-                guard tab != .profile, showingProgress else { return }
+                guard tab != .profile else { return }
                 DispatchQueue.main.async {
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
-                    withTransaction(transaction) { showingProgress = false }
+                    withTransaction(transaction) {
+                        showingProgress = false
+                        navResetID = UUID()
+                    }
                 }
             }
             .sheet(isPresented: $showAuth) {
@@ -76,6 +86,7 @@ struct ProfileView: View {
             }
             #endif
         }
+        .id(navResetID)
     }
 
     private var header: some View {
@@ -215,34 +226,51 @@ struct ProfileView: View {
 
     // MARK: - Profile photo
 
-    private var avatar: some View {
-        PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-            ZStack {
-                if let profileImage {
-                    profileImage
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    LinearGradient(
-                        colors: [.dreamPrimary, .dreamAccent],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                    Text(initials)
-                        .font(.dreamSerif(26))
-                        .foregroundStyle(.white)
-                }
-            }
-            .frame(width: 72, height: 72)
-            .clipShape(Circle())
-            .overlay(Circle().stroke(Color.dreamText.opacity(0.1), lineWidth: 1))
-            .overlay(alignment: .bottomTrailing) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 10, weight: .bold))
+    /// The default placeholder avatar — the app gradient with the dreamer's
+    /// initials. Used as a plain (non-interactive) avatar when signed out.
+    private var avatarFace: some View {
+        ZStack {
+            if let profileImage {
+                profileImage
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [.dreamPrimary, .dreamAccent],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                Text(initials)
+                    .font(.dreamSerif(26))
                     .foregroundStyle(.white)
-                    .padding(6)
-                    .background(Color.dreamPrimary, in: .circle)
-                    .overlay(Circle().stroke(Color.dreamBase, lineWidth: 2))
             }
+        }
+        .frame(width: 72, height: 72)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color.dreamText.opacity(0.1), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        if auth.isSignedIn {
+            editableAvatar
+        } else {
+            // Signed out: a plain default avatar — no photo, no picker. Setting a
+            // photo is part of the account profile and requires signing in.
+            avatarFace
+        }
+    }
+
+    private var editableAvatar: some View {
+        PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+            avatarFace
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(6)
+                        .background(Color.dreamPrimary, in: .circle)
+                        .overlay(Circle().stroke(Color.dreamBase, lineWidth: 2))
+                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Change profile photo")

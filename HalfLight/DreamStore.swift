@@ -228,9 +228,20 @@ final class DreamStore {
         flagged.forEach(pushRemote)
     }
 
+    /// Number of on-device dreams not yet tied to any account (guest dreams) — the
+    /// ones a sign-in offers to merge into, or discard from, the account.
+    func unownedLocalDreamCount() -> Int {
+        let descriptor = FetchDescriptor<Dream>(predicate: #Predicate<Dream> { $0.userID == nil })
+        return (try? context.fetchCount(descriptor)) ?? 0
+    }
+
     /// Pull the signed-in user's remote dreams and merge them with local ones.
     /// Safe to call on every sign-in / launch-while-signed-in.
-    func reconcileWithRemote() {
+    ///
+    /// `claimLocalDreams` decides what happens to on-device guest dreams (those
+    /// with no owner): a new account or an opt-in merge adopts them (`true`); a
+    /// sign-in where the dreamer declined to merge drops them first (`false`).
+    func reconcileWithRemote(claimLocalDreams: Bool = true) {
         guard let sync else { return }
         Task {
             guard let uid = await sync.currentUserID() else { return }
@@ -243,10 +254,34 @@ final class DreamStore {
             if let last, last != uid.uuidString {
                 wipeLocalData()
             }
+            // Declined the merge on sign-in: drop the guest dreams up front so the
+            // merge below can't adopt or upload them.
+            if !claimLocalDreams {
+                discardUnownedLocalDreams()
+            }
             UserDefaults.standard.set(uid.uuidString, forKey: Self.lastOwnerKey)
             guard let remote = try? await sync.fetchAll(for: uid) else { return }
             await merge(remote: remote, userID: uid, sync: sync)
         }
+    }
+
+    /// Delete on-device dreams that were never tied to an account (guest dreams).
+    /// They were never uploaded, so there's no remote row or tombstone to manage;
+    /// any feed posts that referenced them are cleaned up defensively.
+    private func discardUnownedLocalDreams() {
+        let unowned = (try? context.fetch(
+            FetchDescriptor<Dream>(predicate: #Predicate<Dream> { $0.userID == nil })
+        )) ?? []
+        guard !unowned.isEmpty else { return }
+        for dream in unowned {
+            let dreamID = dream.id
+            let posts = (try? context.fetch(
+                FetchDescriptor<FeedPost>(predicate: #Predicate<FeedPost> { $0.dreamID == dreamID })
+            )) ?? []
+            posts.forEach(context.delete)
+            context.delete(dream)
+        }
+        save()
     }
 
     /// Best-effort upload of one dream; stamps it as synced on success.
@@ -463,6 +498,16 @@ final class DreamStore {
         Task { try? await feedSync.deleteComment(id: id) }
     }
 
+    /// Flip a comment's like, keep the local count in step, and mirror to the server.
+    func toggleCommentLike(_ comment: Comment) {
+        comment.isLiked.toggle()
+        comment.likeCount = max(0, comment.likeCount + (comment.isLiked ? 1 : -1))
+        save()
+        guard let feedSync else { return }
+        let id = comment.id, liked = comment.isLiked
+        Task { try? await feedSync.setCommentLike(commentID: id, liked: liked) }
+    }
+
     /// Follow / unfollow a dreamer locally and remotely.
     func setFollow(username: String, following: Bool) {
         let descriptor = FetchDescriptor<Follow>(predicate: #Predicate<Follow> { $0.username == username })
@@ -577,12 +622,13 @@ final class DreamStore {
     func reconcileComments(postID: UUID) {
         guard let feedSync else { return }
         Task {
-            guard let remote = try? await feedSync.fetchComments(postID: postID) else { return }
-            await mergeComments(remote: remote, postID: postID)
+            async let remote = (try? await feedSync.fetchComments(postID: postID)) ?? []
+            async let liked = (try? await feedSync.likedCommentIDs(postID: postID)) ?? []
+            await mergeComments(remote: remote, liked: Set(liked), postID: postID)
         }
     }
 
-    private func mergeComments(remote: [FeedCommentRecord], postID: UUID) async {
+    private func mergeComments(remote: [FeedCommentRecord], liked: Set<UUID>, postID: UUID) async {
         let descriptor = FetchDescriptor<Comment>(predicate: #Predicate<Comment> { $0.postID == postID })
         let locals = (try? context.fetch(descriptor)) ?? []
         var byID = Dictionary(locals.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -593,6 +639,8 @@ final class DreamStore {
                 comment.text = record.text
                 comment.authorUsername = record.authorUsername
                 comment.authorName = record.authorName
+                comment.likeCount = record.likeCount
+                comment.isLiked = liked.contains(record.id)
             } else {
                 let comment = Comment(
                     id: record.id,
@@ -600,7 +648,9 @@ final class DreamStore {
                     authorUsername: record.authorUsername,
                     authorName: record.authorName,
                     text: record.text,
-                    createdAt: record.createdAt
+                    createdAt: record.createdAt,
+                    likeCount: record.likeCount,
+                    isLiked: liked.contains(record.id)
                 )
                 context.insert(comment)
                 byID[record.id] = comment

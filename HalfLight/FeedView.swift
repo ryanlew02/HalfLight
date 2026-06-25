@@ -13,6 +13,9 @@ struct FeedView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(DreamStore.self) private var store
     @Environment(AppRouter.self) private var router
+    @Environment(AuthService.self) private var auth
+    /// Presents the sign-up / log-in sheet when a signed-out dreamer taps the gate.
+    @State private var showAuth = false
     // The full set of posts; `FeedRanker` decides the order (see `rankedPosts`).
     // Newest-first here only gives a stable input and a sensible cold-start order.
     @Query(sort: \FeedPost.createdAt, order: .reverse) private var posts: [FeedPost]
@@ -86,7 +89,11 @@ struct FeedView: View {
                     .padding(.bottom, 12)
 
                 Group {
-                    if posts.isEmpty {
+                    if !auth.isSignedIn {
+                        // The feed is a shared, multi-user space — gate it behind an
+                        // account so likes/comments are attributable.
+                        signInGate
+                    } else if posts.isEmpty {
                         emptyState
                     } else {
                         // Build the dream lookup once per render and thread it down,
@@ -107,11 +114,14 @@ struct FeedView: View {
             .sheet(item: $commentsPost) { post in
                 CommentsView(post: post)
             }
+            .sheet(isPresented: $showAuth) {
+                AuthView()
+            }
             // The feed stays alive across tab switches (it isn't rebuilt), so refresh
             // whenever the Feed tab becomes active — `initial: true` covers the first
             // time it's opened.
             .onChange(of: router.tab, initial: true) { _, tab in
-                guard tab == .feed else { return }
+                guard tab == .feed, auth.isSignedIn else { return }
                 store.reconcileFeed()
                 store.refreshFeedAuthors()
                 refreshRanking()
@@ -173,6 +183,30 @@ struct FeedView: View {
         .tabBarClearance()
     }
 
+    /// Shown to signed-out dreamers: the feed needs an account so engagement is
+    /// attributable. Tapping the button opens the sign-up / log-in sheet.
+    private var signInGate: some View {
+        VStack(spacing: DreamMetric.md) {
+            Image(systemName: "person.2")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(Color.dreamPrimary)
+            Text("Join the dream feed")
+                .font(.dreamSectionHeader)
+            Text("Sign up or log in to see dreams from other dreamers, and to like and comment on them.")
+                .font(.dreamBodyText)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Button("Sign Up or Log In") {
+                SoundManager.shared.play(.tap)
+                showAuth = true
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .padding(.top, DreamMetric.sm)
+        }
+        .padding(DreamMetric.xl)
+    }
+
     private var emptyState: some View {
         VStack(spacing: DreamMetric.md) {
             Image(systemName: "moon.stars")
@@ -208,11 +242,13 @@ struct FeedDreamRoute: Identifiable, Hashable {
     FeedView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AuthService())
 }
 
 #Preview("Dark") {
     FeedView()
         .modelContainer(PreviewData.container)
         .environment(PreviewData.store)
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }

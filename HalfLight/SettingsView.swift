@@ -15,25 +15,34 @@ struct SettingsView: View {
     @AppStorage("dailyReminderEnabled") private var dailyReminder = false
     @AppStorage("soundEffectsEnabled") private var soundEnabled = true
     @Environment(LanguageManager.self) private var language
+    @State private var showPaywall = false
 
     var body: some View {
         Form {
             Section {
-                NavigationLink {
-                    ProSettingsView()
+                Button {
+                    SoundManager.shared.play(.tap)
+                    if subscriptions.isSubscribed {
+                        // Already a member — let them manage / cancel in the App Store.
+                        Task { await subscriptions.showManageSubscriptions() }
+                    } else {
+                        // Straight to the subscribe screen — no interstitial status page.
+                        showPaywall = true
+                    }
                 } label: {
-                    SettingRow(
-                        title: "HalfLight Pro",
-                        systemImage: "sparkles",
-                        value: subscriptions.isSubscribed ? localized("Active") : localized("Upgrade")
-                    )
+                    ProCallToActionCard(isSubscribed: subscriptions.isSubscribed)
                 }
-            } footer: {
-                Text(subscriptions.isSubscribed
-                     ? "AI features are unlocked. Thank you for supporting HalfLight."
-                     : "Unlock AI dream analysis, auto-tags, and AI titles.")
+                .buttonStyle(.plain)
+                // Gradient as the row background (like the other rows use dreamSurface)
+                // so it spans the exact same card width as every other section.
+                .listRowBackground(
+                    LinearGradient(
+                        colors: [.dreamPrimary, .dreamAccent],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
             }
-            .listRowBackground(Color.dreamSurface)
 
             Section {
                 NavigationLink {
@@ -100,6 +109,58 @@ struct SettingsView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .sheet(isPresented: $showPaywall) { PaywallView() }
+    }
+}
+
+/// The HalfLight Pro entry in Settings — a vivid gradient card that sells the
+/// upgrade (tapping opens the subscribe sheet) or, once subscribed, shows the
+/// dreamer is a member and taps through to manage / cancel.
+private struct ProCallToActionCard: View {
+    let isSubscribed: Bool
+
+    var body: some View {
+        HStack(spacing: DreamMetric.md) {
+            Image(systemName: isSubscribed ? "crown.fill" : "sparkles")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 46)
+                .background(.white.opacity(0.18), in: .circle)
+
+            VStack(alignment: .leading, spacing: 3) {
+                // "HalfLight Pro" is the product name and stays English everywhere;
+                // the surrounding copy is translated. The `%@` placeholder lets each
+                // language place the brand name correctly.
+                (isSubscribed
+                    ? Text(verbatim: "HalfLight Pro")
+                    : Text(localized("Upgrade to %@", "HalfLight Pro")))
+                    .font(.dreamGrotesk(17, .bold))
+                    .foregroundStyle(.white)
+                Text(localized(isSubscribed
+                     ? "You're a member — tap to manage."
+                     : "AI dream analysis, auto-tags & titles."))
+                    .font(.dreamBody(13, .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: DreamMetric.sm)
+
+            if isSubscribed {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+            } else {
+                Text(localized("Upgrade"))
+                    .font(.dreamGrotesk(13, .bold))
+                    .foregroundStyle(Color.dreamPrimary)
+                    .padding(.horizontal, DreamMetric.md)
+                    .padding(.vertical, 7)
+                    .background(.white, in: .capsule)
+            }
+        }
+        .padding(.vertical, DreamMetric.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -118,65 +179,6 @@ private struct SettingRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-    }
-}
-
-// MARK: - HalfLight Pro
-
-/// Subscription status + management: upgrade (opens the paywall), restore, and a
-/// link to the system "Manage Subscription" sheet.
-struct ProSettingsView: View {
-    @Environment(SubscriptionManager.self) private var subscriptions
-    @State private var showPaywall = false
-
-    var body: some View {
-        Form {
-            Section {
-                HStack {
-                    Label("Status", systemImage: "sparkles")
-                    Spacer()
-                    Text(subscriptions.isSubscribed ? "Active" : "Not subscribed")
-                        .foregroundStyle(subscriptions.isSubscribed ? Color.dreamPrimary : .secondary)
-                }
-            } footer: {
-                Text(subscriptions.isSubscribed
-                     ? "AI dream analysis, auto-tags, and AI titles are unlocked."
-                     : "Subscribe to unlock AI dream analysis, auto-tags, and AI titles.")
-            }
-            .listRowBackground(Color.dreamSurface)
-
-            Section {
-                if !subscriptions.isSubscribed {
-                    Button {
-                        SoundManager.shared.play(.tap)
-                        showPaywall = true
-                    } label: {
-                        Label("Upgrade to Pro", systemImage: "crown")
-                    }
-                }
-                Button {
-                    Task { await subscriptions.restore() }
-                } label: {
-                    Label("Restore Purchases", systemImage: "arrow.clockwise")
-                }
-                if subscriptions.isSubscribed {
-                    Button {
-                        Task { await subscriptions.showManageSubscriptions() }
-                    } label: {
-                        Label("Manage Subscription", systemImage: "gear")
-                    }
-                }
-            }
-            .listRowBackground(Color.dreamSurface)
-        }
-        .scrollContentBackground(.hidden)
-        .background { DreamBackground() }
-        .tint(.dreamPrimary)
-        .navigationTitle("HalfLight Pro")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        .sheet(isPresented: $showPaywall) { PaywallView() }
     }
 }
 
@@ -436,6 +438,19 @@ struct AccountSettingsView: View {
                 }
                 .listRowBackground(Color.dreamSurface)
 
+                Section {
+                    NavigationLink {
+                        UsernameSettingsView()
+                    } label: {
+                        SettingRow(
+                            title: "Username",
+                            systemImage: "at",
+                            value: auth.username.map { "@\($0)" }
+                        )
+                    }
+                }
+                .listRowBackground(Color.dreamSurface)
+
                 if auth.canChangePassword {
                     Section {
                         NavigationLink {
@@ -472,6 +487,7 @@ struct AccountSettingsView: View {
                         HStack {
                             Spacer()
                             Text("Delete account")
+                                .foregroundStyle(.red)
                             Spacer()
                         }
                     }
@@ -616,6 +632,134 @@ struct ChangePasswordView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+    }
+}
+
+// MARK: - Username
+
+/// Change the account username, rate-limited to once every 30 days (enforced
+/// server-side). Validates availability live as the dreamer types, so they only
+/// ever submit a free handle.
+struct UsernameSettingsView: View {
+    @Environment(AuthService.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var username = ""
+    @State private var showWarning = false
+
+    /// The username can't be changed while inside its 30-day cooldown.
+    private var inCooldown: Bool { auth.usernameCooldownEnds != nil }
+
+    /// The normalized handle the way `AuthService` will store it.
+    private var normalized: String {
+        username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// Whether the typed handle differs from the current one.
+    private var changed: Bool { normalized != (auth.username ?? "") }
+
+    /// Save is allowed only for a real change to a confirmed-available handle.
+    private var canSave: Bool {
+        changed && !inCooldown && !auth.isWorking && auth.usernameStatus == .available
+    }
+
+    var body: some View {
+        Form {
+            Section("Username") {
+                HStack(spacing: 2) {
+                    Text("@")
+                        .font(.dreamBody(16, .semibold))
+                        .foregroundStyle(.secondary)
+                    TextField("username", text: $username)
+                        .font(.dreamBody(16, .semibold))
+                        .textContentType(.username)
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .autocorrectionDisabled()
+                        .disabled(inCooldown)
+                        .foregroundStyle(inCooldown ? Color.secondary : Color.dreamText)
+                        .onChange(of: username) { _, newValue in
+                            // Typing your own current handle isn't a change, so don't
+                            // flag it as "taken" — just clear the indicator.
+                            if changed {
+                                auth.checkUsernameAvailability(newValue)
+                            } else {
+                                auth.resetUsernameStatus()
+                            }
+                        }
+                }
+
+                if changed && !inCooldown {
+                    UsernameAvailabilityLabel(status: auth.usernameStatus)
+                }
+
+                Text(usernameHint)
+                    .font(.dreamCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .listRowBackground(Color.dreamSurface)
+
+            if let error = auth.errorMessage {
+                Section {
+                    Text(error)
+                        .font(.dreamBody(13, .medium))
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .listRowBackground(Color.dreamSurface)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background { DreamBackground() }
+        .tint(.dreamPrimary)
+        .navigationTitle("Username")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(action: { showWarning = true }) {
+                    if auth.isWorking {
+                        ProgressView()
+                    } else {
+                        Text("Save")
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(!canSave)
+            }
+        }
+        .alert("Change username?", isPresented: $showWarning) {
+            Button("Change", role: .destructive) { commit() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won't be able to change your username again for 30 days.")
+        }
+        .onAppear {
+            username = auth.username ?? ""
+            auth.errorMessage = nil
+            auth.resetUsernameStatus()
+        }
+        .onDisappear { auth.resetUsernameStatus() }
+    }
+
+    /// Guidance under the field: the cooldown date if locked, otherwise the heads-up
+    /// that a change starts a new 30-day lock.
+    private var usernameHint: String {
+        if let ends = auth.usernameCooldownEnds {
+            return "You changed your username recently. You can change it again on \(ends.formatted(date: .abbreviated, time: .omitted))."
+        }
+        return "Choose carefully — once you change your username, you can't change it again for 30 days."
+    }
+
+    private func commit() {
+        Task {
+            let ok = await auth.updateUsername(username)
+            SoundManager.shared.play(ok ? .reward : .wrong)
+            if ok { dismiss() }
+        }
     }
 }
 

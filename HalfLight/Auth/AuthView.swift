@@ -12,7 +12,12 @@ import AuthenticationServices
 struct AuthView: View {
     @Environment(AuthService.self) private var auth
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var scheme
+
+    /// Explicit focus targets. Driving focus through `@FocusState` makes the text
+    /// fields focus on the first tap (SwiftUI otherwise sometimes needs several)
+    /// and lets Return advance through the form.
+    private enum Field: Hashable { case firstName, lastName, username, email, password, confirmPassword }
+    @FocusState private var focusedField: Field?
 
     private enum Mode {
         case signUp, signIn
@@ -82,24 +87,45 @@ struct AuthView: View {
                     HStack(spacing: DreamMetric.md) {
                         field("First name", text: $firstName, isSecure: false)
                             .textContentType(.givenName)
+                            .focused($focusedField, equals: .firstName)
                         field("Last name", text: $lastName, isSecure: false)
                             .textContentType(.familyName)
+                            .focused($focusedField, equals: .lastName)
                     }
-                    field("Username", text: $username, isSecure: false)
-                        .textContentType(.username)
+                    VStack(alignment: .leading, spacing: DreamMetric.xs) {
+                        field("Username", text: $username, isSecure: false)
+                            .textContentType(.username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($focusedField, equals: .username)
+                            .onChange(of: username) { _, newValue in
+                                auth.checkUsernameAvailability(newValue)
+                            }
+                        UsernameAvailabilityLabel(status: auth.usernameStatus)
+                            .padding(.horizontal, DreamMetric.xs)
+                    }
+                }
+                VStack(alignment: .leading, spacing: DreamMetric.xs) {
+                    field("Email", text: $email, isSecure: false)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($focusedField, equals: .email)
+                    // Live validity on sign-up; stays hidden until they start typing.
+                    if mode == .signUp && !email.isEmpty {
+                        requirementRow("A valid email address", met: emailValid)
+                            .padding(.horizontal, DreamMetric.xs)
+                    }
                 }
-                field("Email", text: $email, isSecure: false)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
                 field("Password", text: $password, isSecure: true)
                     .textContentType(mode == .signUp ? .newPassword : .password)
+                    .focused($focusedField, equals: .password)
                 if mode == .signUp {
                     field("Confirm password", text: $confirmPassword, isSecure: true)
                         .textContentType(.newPassword)
+                        .focused($focusedField, equals: .confirmPassword)
+                    passwordRequirements
                 }
             }
 
@@ -119,18 +145,14 @@ struct AuthView: View {
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(auth.isWorking)
+            .disabled(auth.isWorking || (mode == .signUp && (auth.usernameStatus == .taken || !emailValid || !allPasswordRequirementsMet)))
 
             divider
 
-            SignInWithAppleButton(.continue) { request in
-                auth.prepareAppleRequest(request)
-            } onCompletion: { result in
-                Task { await auth.completeAppleSignIn(result) }
-            }
-            .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
-            .frame(height: 50)
-            .clipShape(.rect(cornerRadius: DreamMetric.controlRadius))
+            // Extracted into its own view: this bridges to a UIKit control, so
+            // keeping it out of the per-keystroke `body` recompute (its inputs never
+            // change) avoids rebuilding the bridge on every character typed.
+            AppleSignInButton()
 
             toggleMode
 
@@ -144,6 +166,8 @@ struct AuthView: View {
             .frame(maxWidth: .infinity)
             .disabled(auth.isWorking)
         }
+        // Clear any leftover availability state from a prior presentation.
+        .onAppear { auth.resetUsernameStatus() }
     }
 
     private var header: some View {
@@ -170,6 +194,7 @@ struct AuthView: View {
                 firstName = ""
                 lastName = ""
                 username = ""
+                auth.resetUsernameStatus()
                 auth.errorMessage = nil
                 auth.infoMessage = nil
             }
@@ -215,6 +240,50 @@ struct AuthView: View {
     }
 
     // MARK: - Pieces
+
+    // MARK: - Email & password requirements
+
+    /// Whether the typed email is well-formed (`local@domain.tld`).
+    private var emailValid: Bool { AuthService.isValidEmail(email) }
+
+    private var passwordLengthMet: Bool { (8...20).contains(password.count) }
+    private var passwordUppercaseMet: Bool { password.contains(where: \.isUppercase) }
+    private var passwordLowercaseMet: Bool { password.contains(where: \.isLowercase) }
+    private var passwordNumberMet: Bool { password.contains(where: \.isNumber) }
+    /// True once the confirmation matches a non-empty password.
+    private var passwordsMatch: Bool { !confirmPassword.isEmpty && password == confirmPassword }
+
+    /// Every rule satisfied — gates the Create account button.
+    private var allPasswordRequirementsMet: Bool {
+        passwordLengthMet && passwordUppercaseMet && passwordLowercaseMet
+            && passwordNumberMet && passwordsMatch
+    }
+
+    /// The live checklist shown under the password fields on sign-up; each row
+    /// ticks green the moment its rule is met.
+    private var passwordRequirements: some View {
+        VStack(alignment: .leading, spacing: DreamMetric.xs) {
+            requirementRow("8–20 characters", met: passwordLengthMet)
+            requirementRow("An uppercase letter", met: passwordUppercaseMet)
+            requirementRow("A lowercase letter", met: passwordLowercaseMet)
+            requirementRow("A number", met: passwordNumberMet)
+            requirementRow("Passwords match", met: passwordsMatch)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, DreamMetric.xs)
+    }
+
+    private func requirementRow(_ text: String, met: Bool) -> some View {
+        HStack(spacing: DreamMetric.xs) {
+            Image(systemName: met ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 13))
+                .foregroundStyle(met ? .green : Color.dreamText.opacity(0.3))
+            Text(text)
+                .font(.dreamBody(12, .medium))
+                .foregroundStyle(met ? Color.dreamText.opacity(0.8) : .secondary)
+        }
+        .animation(.easeOut(duration: 0.15), value: met)
+    }
 
     private func field(_ placeholder: String, text: Binding<String>, isSecure: Bool) -> some View {
         Group {
@@ -297,6 +366,28 @@ struct AuthView: View {
                 await auth.signIn(email: email, password: password)
             }
         }
+    }
+}
+
+// MARK: - Sign in with Apple
+
+/// The Apple sign-in control, in its own view so it isn't rebuilt on every
+/// keystroke in the form above (it bridges to a UIKit control, which is the
+/// expensive part). Its inputs never change, so SwiftUI skips re-evaluating it
+/// when the parent re-renders for unrelated state.
+private struct AppleSignInButton: View {
+    @Environment(AuthService.self) private var auth
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        SignInWithAppleButton(.continue) { request in
+            auth.prepareAppleRequest(request)
+        } onCompletion: { result in
+            Task { await auth.completeAppleSignIn(result) }
+        }
+        .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
+        .frame(height: 50)
+        .clipShape(.rect(cornerRadius: DreamMetric.controlRadius))
     }
 }
 

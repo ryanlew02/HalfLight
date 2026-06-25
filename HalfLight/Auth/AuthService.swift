@@ -80,6 +80,11 @@ protocol AuthBackend: Sendable {
     func updateAvatar(_ data: Data?) async throws
     /// The current user's profile photo, if one has been uploaded.
     func fetchAvatar() async -> Data?
+    /// The completed Lucid Path lesson IDs stored on the account. `nil` when the
+    /// server couldn't be reached, so a failed fetch never clobbers local progress.
+    func fetchLucidProgress() async -> [String]?
+    /// Store the completed Lucid Path lesson IDs on the account.
+    func updateLucidProgress(_ lessons: [String]) async throws
     /// Change the current user's username. Throws if it's taken or the server's
     /// 30-day cooldown rejects it.
     func updateUsername(_ username: String) async throws
@@ -110,6 +115,13 @@ enum AuthError: LocalizedError {
 final class AuthService {
     enum Status: Equatable { case unknown, signedOut, signedIn }
 
+    /// How the dreamer most recently reached the signed-in state. Drives whether
+    /// on-device guest dreams are adopted automatically (a brand-new account, via
+    /// `signedUp`) or the dreamer is asked first (logging into an existing account,
+    /// via `signedIn`). `nil` for a launch session-restore, which adopts silently.
+    enum AuthEntry: Equatable { case signedUp, signedIn }
+    private(set) var lastEntry: AuthEntry?
+
     private(set) var status: Status = .unknown
     private(set) var email: String?
     private(set) var provider: AuthProvider = .unknown
@@ -123,6 +135,12 @@ final class AuthService {
     var errorMessage: String?
     /// A transient success message (e.g. password-reset confirmation).
     var infoMessage: String?
+
+    /// Live availability of the username being typed on the sign-up form.
+    enum UsernameStatus: Equatable { case idle, checking, available, taken, invalid }
+    private(set) var usernameStatus: UsernameStatus = .idle
+    /// The in-flight debounced availability check, cancelled when the field changes.
+    private var usernameCheckTask: Task<Void, Never>?
 
     /// Set once a password-reset deep link has been exchanged for a recovery
     /// session; drives the modal "set a new password" screen.
@@ -232,6 +250,39 @@ final class AuthService {
         try? await backend.updateAvatar(data)
     }
 
+    // MARK: - Lucid Path progress (tied to the account, like dreams)
+
+    /// Keep the account and the device in step on Lucid Path progress. Completion
+    /// only ever grows, so this *unions* the two sets — the device picks up any
+    /// lessons finished on another device, and the account picks up any finished
+    /// here — and never loses progress. Used on sign-up, on a chosen merge, and on
+    /// every launch/sign-in where local progress is kept. A failed fetch is left
+    /// untouched (so we never overwrite the account with a stale local set).
+    func syncLucidProgress() async {
+        guard isSignedIn else { return }
+        guard let remoteArray = await backend.fetchLucidProgress() else { return }
+        let local = LucidProgress.completedIDs()
+        let remote = Set(remoteArray)
+        let union = local.union(remote)
+        if union != local { LucidProgress.replaceAll(union) }
+        if union != remote { try? await backend.updateLucidProgress(Array(union)) }
+    }
+
+    /// Drop the device's Lucid Path progress (declined the merge on sign-in), then
+    /// pull the account's so the device reflects that account — mirroring how
+    /// declining to merge dreams discards the local ones.
+    func discardLocalLucidProgress() async {
+        LucidProgress.clear()
+        guard let remoteArray = await backend.fetchLucidProgress() else { return }
+        LucidProgress.replaceAll(remoteArray)
+    }
+
+    /// Wipe the device's Lucid Path progress on sign-out — it lives on the account
+    /// and rehydrates on the next sign-in, so the signed-out app shows zero.
+    func clearLocalLucidProgress() {
+        LucidProgress.clear()
+    }
+
     /// Refresh the cached profile from the account whenever signed in: the server
     /// is the source of truth for a signed-in dreamer, so this also makes the
     /// account's first name win over any locally-set name (the greeting reads
@@ -300,6 +351,9 @@ final class AuthService {
             }
             try await backend.createProfile(username: handle, firstName: first, lastName: last)
             persistProfile(username: handle, firstName: first, lastName: last)
+            // The profile row now exists (it didn't at sign-in for a new Apple
+            // account), so push up any Lucid Path progress earned as a guest.
+            await syncLucidProgress()
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -394,6 +448,14 @@ final class AuthService {
             errorMessage = "Usernames must be 3–20 characters using letters, numbers, or underscores."
             return
         }
+        guard Self.isValidPassword(password) else {
+            errorMessage = "Your password must be 8–20 characters and include an uppercase letter, a lowercase letter, and a number."
+            return
+        }
+        guard Self.isValidEmail(email) else {
+            errorMessage = "Please enter a valid email address."
+            return
+        }
 
         do {
             guard try await backend.isUsernameAvailable(handle) else {
@@ -410,6 +472,8 @@ final class AuthService {
             persistProfile(username: handle, firstName: first, lastName: last)
             self.email = resolvedEmail
             self.provider = .email
+            // A brand-new account: any on-device guest dreams are adopted silently.
+            lastEntry = .signedUp
             status = .signedIn
         } catch {
             errorMessage = error.localizedDescription
@@ -432,6 +496,57 @@ final class AuthService {
     /// Usernames: 3–20 chars, lowercase letters, numbers, or underscores.
     static func isValidUsername(_ username: String) -> Bool {
         username.range(of: "^[a-z0-9_]{3,20}$", options: .regularExpression) != nil
+    }
+
+    /// A basic well-formed email check: `local@domain.tld`. The sign-up form uses
+    /// this live; it's also the backstop in `signUp`. (The server is the final
+    /// authority on whether the address actually exists.)
+    static func isValidEmail(_ email: String) -> Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = "^[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        return trimmed.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// Passwords: 8–20 chars with at least one uppercase letter, one lowercase
+    /// letter, and one number. The sign-up form enforces this live; this is the
+    /// backstop so the policy can't be bypassed.
+    static func isValidPassword(_ password: String) -> Bool {
+        (8...20).contains(password.count)
+            && password.contains(where: \.isUppercase)
+            && password.contains(where: \.isLowercase)
+            && password.contains(where: \.isNumber)
+    }
+
+    /// Debounced live availability check for the sign-up username field. Validates
+    /// the format locally, then (after a short pause so we don't query every
+    /// keystroke) asks the backend, publishing the outcome via `usernameStatus`.
+    /// A network error leaves the status `idle` — sign-up's own check is the gate,
+    /// so we never block the dreamer over a flaky lookup.
+    func checkUsernameAvailability(_ raw: String) {
+        usernameCheckTask?.cancel()
+        let handle = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !handle.isEmpty else { usernameStatus = .idle; return }
+        guard Self.isValidUsername(handle) else { usernameStatus = .invalid; return }
+
+        usernameStatus = .checking
+        usernameCheckTask = Task { [handle] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            do {
+                let available = try await backend.isUsernameAvailable(handle)
+                guard !Task.isCancelled else { return }
+                usernameStatus = available ? .available : .taken
+            } catch {
+                guard !Task.isCancelled else { return }
+                usernameStatus = .idle
+            }
+        }
+    }
+
+    /// Clear any pending check and reset the indicator (mode switch / field clear).
+    func resetUsernameStatus() {
+        usernameCheckTask?.cancel()
+        usernameStatus = .idle
     }
 
     func signIn(email: String, password: String) async {
@@ -517,11 +632,17 @@ final class AuthService {
         defer { isWorking = false }
         do {
             try await backend.signOut()
-            // Drop the cached photo so the next account doesn't inherit it (and so
-            // its own photo can hydrate from the server).
-            UserDefaults.standard.removeObject(forKey: "profilePhoto")
+            // Wipe the cached identity (name, @handle, bio, photo) so the signed-out
+            // Profile tab falls back to the default "Dreamer" and the next account
+            // doesn't inherit it — each rehydrates from the server on sign-in.
+            clearPersistedProfile()
             email = nil
             provider = .unknown
+            username = nil
+            firstName = nil
+            lastName = nil
+            bio = nil
+            usernameChangedAt = nil
             status = .signedOut
         } catch {
             errorMessage = error.localizedDescription
@@ -639,6 +760,10 @@ final class AuthService {
                 errorMessage = "Couldn't reach the server. Check your connection and try again."
                 return
             }
+            // No username yet means this is a brand-new account (e.g. first Apple
+            // sign-in) — adopt guest dreams silently. An existing account already
+            // has a handle, so logging in prompts before merging device dreams.
+            lastEntry = (username?.isEmpty ?? true) ? .signedUp : .signedIn
             status = .signedIn
             await hydrateAvatarIfNeeded()
         } catch {
@@ -740,6 +865,16 @@ final class MockAuthBackend: AuthBackend {
 
     func fetchAvatar() async -> Data? {
         UserDefaults.standard.data(forKey: "mockAvatar")
+    }
+
+    func fetchLucidProgress() async -> [String]? {
+        // The mock is always "reachable", so report an empty set (not nil) when
+        // nothing has been stored yet.
+        UserDefaults.standard.stringArray(forKey: "mockLucidProgress") ?? []
+    }
+
+    func updateLucidProgress(_ lessons: [String]) async throws {
+        UserDefaults.standard.set(lessons, forKey: "mockLucidProgress")
     }
 
     func updateUsername(_ username: String) async throws {
@@ -854,8 +989,11 @@ final class SupabaseAuthBackend: AuthBackend {
 
     func isUsernameAvailable(_ username: String) async throws -> Bool {
         guard SupabaseConfig.isConfigured else { throw notConfigured }
-        // Requires a `profiles` table with a unique, lowercase `username` column.
-        let rows: [ProfileRow] = try await client
+        // Decode a minimal row, not the full `ProfileRow`: the query only selects
+        // `username`, so decoding into `ProfileRow` (which also needs id/first/last)
+        // would throw whenever a row exists — i.e. exactly when the name is taken.
+        struct UsernameRow: Decodable { let username: String }
+        let rows: [UsernameRow] = try await client
             .from("profiles")
             .select("username")
             .eq("username", value: username)
@@ -1000,6 +1138,42 @@ final class SupabaseAuthBackend: AuthBackend {
             .value
         guard let encoded = rows?.first?.avatar else { return nil }
         return Data(base64Encoded: encoded)
+    }
+
+    func fetchLucidProgress() async -> [String]? {
+        guard SupabaseConfig.isConfigured,
+              let userID = (try? await client.auth.session)?.user.id else { return nil }
+        struct LucidRow: Decodable {
+            let lucidCompletedLessons: [String]?
+            enum CodingKeys: String, CodingKey { case lucidCompletedLessons = "lucid_completed_lessons" }
+        }
+        // A thrown error → `nil` (unreachable), so the caller won't overwrite the
+        // account with a stale local set. A present-but-empty column → `[]`.
+        guard let rows: [LucidRow] = try? await client
+            .from("profiles")
+            .select("lucid_completed_lessons")
+            .eq("id", value: userID)
+            .limit(1)
+            .execute()
+            .value
+        else { return nil }
+        return rows.first?.lucidCompletedLessons ?? []
+    }
+
+    func updateLucidProgress(_ lessons: [String]) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard let userID = (try? await client.auth.session)?.user.id else {
+            throw AuthError.message("You need to be signed in to save your progress.")
+        }
+        struct LucidUpdate: Encodable {
+            let lucidCompletedLessons: [String]
+            enum CodingKeys: String, CodingKey { case lucidCompletedLessons = "lucid_completed_lessons" }
+        }
+        try await client
+            .from("profiles")
+            .update(LucidUpdate(lucidCompletedLessons: lessons))
+            .eq("id", value: userID)
+            .execute()
     }
 
     func updateUsername(_ username: String) async throws {

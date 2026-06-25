@@ -23,9 +23,12 @@ struct AddDreamView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(SubscriptionManager.self) private var subscriptions
+    @Environment(AuthService.self) private var auth
     @State private var showDeleteConfirm = false
     /// Presented when a non-subscriber taps an AI feature.
     @State private var showPaywall = false
+    /// Presented when a signed-out dreamer tries to make a dream public.
+    @State private var showAuth = false
 
     @State private var title: String
     @State private var entry: String
@@ -124,20 +127,37 @@ struct AddDreamView: View {
                 .listRowBackground(Color.dreamSurface)
 
                 Section("Visibility") {
-                    Picker("Visibility", selection: $isPublic) {
-                        Label("Private", systemImage: "lock.fill").tag(false)
-                        Label("Public", systemImage: "globe").tag(true)
-                    }
-                    #if os(iOS)
-                    .pickerStyle(.segmented)
-                    #endif
-                    .labelsHidden()
+                    if auth.isSignedIn {
+                        Picker("Visibility", selection: $isPublic) {
+                            Label("Private", systemImage: "lock.fill").tag(false)
+                            Label("Public", systemImage: "globe").tag(true)
+                        }
+                        #if os(iOS)
+                        .pickerStyle(.segmented)
+                        #endif
+                        .labelsHidden()
 
-                    Text(isPublic
-                         ? "This dream is shared to the feed for others to see."
-                         : "Only you can see this dream.")
-                        .font(.dreamCaption)
-                        .foregroundStyle(.secondary)
+                        Text(isPublic
+                             ? "This dream is shared to the feed for others to see."
+                             : "Only you can see this dream.")
+                            .font(.dreamCaption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        // Sharing to the feed is a public, multi-user action — gate it
+                        // behind an account. The dream stays private until they sign in.
+                        Label("Only you can see this dream.", systemImage: "lock.fill")
+                            .font(.dreamCaption)
+                            .foregroundStyle(.secondary)
+
+                        Button {
+                            SoundManager.shared.play(.tap)
+                            showAuth = true
+                        } label: {
+                            Label("Sign up or log in to share to the feed", systemImage: "globe")
+                                .font(.dreamBody(14, .semibold))
+                                .foregroundStyle(Color.dreamPrimary)
+                        }
+                    }
                 }
                 .listRowBackground(Color.dreamSurface)
 
@@ -214,6 +234,7 @@ struct AddDreamView: View {
             }
             .onDisappear { transcriber.stop() }
             .sheet(isPresented: $showPaywall) { PaywallView() }
+            .sheet(isPresented: $showAuth) { AuthView() }
             .navigationTitle(isEditing ? "Edit Dream" : "New Dream")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -254,7 +275,8 @@ struct AddDreamView: View {
             entry: entry.trimmingCharacters(in: .whitespacesAndNewlines),
             mood: mood,
             tags: tags,
-            isPublic: isPublic,
+            // Never publish a guest's dream — sharing to the feed needs an account.
+            isPublic: isPublic && auth.isSignedIn,
             isLucid: isLucid,
             aiCategory: aiMeaning == nil ? nil : aiCategory,
             aiMeaning: aiMeaning,
@@ -529,18 +551,26 @@ struct AddDreamView: View {
 
 #Preview("New") {
     AddDreamView { _ in }
+        .environment(SubscriptionManager())
+        .environment(AuthService())
 }
 
 #Preview("New — Dark") {
     AddDreamView { _ in }
+        .environment(SubscriptionManager())
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }
 
 #Preview("Edit") {
     AddDreamView(existingDream: Dream.preview) { _ in }
+        .environment(SubscriptionManager())
+        .environment(AuthService())
 }
 
 #Preview("Edit — Dark") {
     AddDreamView(existingDream: Dream.preview) { _ in }
+        .environment(SubscriptionManager())
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }

@@ -49,8 +49,26 @@ enum LucidProgress {
     static func complete(_ id: String) -> Bool {
         var ids = completedIDs()
         guard ids.insert(id).inserted else { return false }
+        write(ids)
+        return true
+    }
+
+    /// Overwrite local progress with exactly `ids` (used when pulling the
+    /// account's progress down on sign-in / launch).
+    static func replaceAll(_ ids: some Sequence<String>) {
+        write(Set(ids))
+    }
+
+    /// Wipe local progress back to zero (used on sign-out — the account keeps it).
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: completedKey)
+        UserDefaults.standard.removeObject(forKey: countKey)
+    }
+
+    /// Persist a set of completed lesson IDs and the derived count together, so
+    /// the two keys never drift apart.
+    private static func write(_ ids: Set<String>) {
         UserDefaults.standard.set(Array(ids), forKey: completedKey)
         UserDefaults.standard.set(ids.count, forKey: countKey)
-        return true
     }
 }

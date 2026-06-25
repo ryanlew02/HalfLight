@@ -23,6 +23,10 @@ struct CommentsView: View {
     @Query private var comments: [Comment]
     @State private var draft = ""
     @FocusState private var composerFocused: Bool
+    /// The ranked order captured as ids, so liking a comment doesn't reshuffle the
+    /// list under the reader; recomputed when the comment set changes or the sheet
+    /// (re)appears. The view always renders live comments in this order.
+    @State private var orderedIDs: [UUID] = []
 
     init(post: FeedPost) {
         self.post = post
@@ -54,7 +58,14 @@ struct CommentsView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .task { store.reconcileComments(postID: post.id) }
+            .task {
+                refreshRanking()
+                store.reconcileComments(postID: post.id)
+            }
+            // Re-rank when comments are added/removed (e.g. the reconcile pulls more
+            // in, or the dreamer posts one) — but not on every like, which would
+            // reshuffle the list as the reader is reading it.
+            .onChange(of: comments.count) { _, _ in refreshRanking() }
         }
     }
 
@@ -62,12 +73,25 @@ struct CommentsView: View {
         comments.count == 1 ? "1 Comment" : "\(comments.count) Comments"
     }
 
+    /// Live comments in the last-computed ranked order; comments added/removed
+    /// since are handled on the next `refreshRanking()`.
+    private var rankedComments: [Comment] {
+        let byID = Dictionary(comments.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let ordered = orderedIDs.compactMap { byID[$0] }
+        // Fall back to the query order before the first ranking pass runs.
+        return ordered.isEmpty ? comments : ordered
+    }
+
+    private func refreshRanking() {
+        orderedIDs = CommentRanker.rank(comments).map(\.id)
+    }
+
     // MARK: - List
 
     private var commentList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: DreamMetric.lg) {
-                ForEach(comments) { comment in
+                ForEach(rankedComments) { comment in
                     commentRow(comment)
                 }
             }
@@ -101,6 +125,8 @@ struct CommentsView: View {
             }
 
             Spacer(minLength: 0)
+
+            likeButton(comment)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -113,6 +139,26 @@ struct CommentsView: View {
                 }
             }
         }
+    }
+
+    private func likeButton(_ comment: Comment) -> some View {
+        Button {
+            SoundManager.shared.play(comment.isLiked ? .tap : .shimmer)
+            store.toggleCommentLike(comment)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: comment.isLiked ? "heart.fill" : "heart")
+                    .font(.system(size: 13, weight: .semibold))
+                if comment.likeCount > 0 {
+                    Text("\(comment.likeCount)")
+                        .font(.dreamBody(12, .semibold))
+                }
+            }
+            .foregroundStyle(comment.isLiked ? Color.dreamAccent : Color.dreamText.opacity(0.5))
+            .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(comment.isLiked ? "Unlike comment" : "Like comment")
     }
 
     private var emptyState: some View {

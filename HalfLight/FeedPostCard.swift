@@ -234,6 +234,8 @@ struct FeedPostCard: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Comment")
 
+            Spacer(minLength: 0)
+
             Button {
                 SoundManager.shared.play(post.isLiked ? .tap : .shimmer)
                 onToggleLike()
@@ -246,18 +248,16 @@ struct FeedPostCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(post.isLiked ? "Unlike" : "Like")
-
-            Spacer(minLength: 0)
         }
     }
 
     private func actionLabel(symbol: String, count: Int, active: Bool) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 7) {
             Image(systemName: symbol)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
             if count > 0 {
                 Text("\(count)")
-                    .font(.dreamBody(13, .semibold))
+                    .font(.dreamBody(15, .semibold))
             }
         }
         .foregroundStyle(active ? Color.dreamAccent : Color.dreamText.opacity(0.6))

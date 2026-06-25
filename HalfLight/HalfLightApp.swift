@@ -33,6 +33,11 @@ private struct RootView: View {
     @State private var auth = AuthService()
     @State private var subscriptions = SubscriptionManager()
     @State private var language = LanguageManager.shared
+    /// Drives the sign-in "merge this device's data?" prompt: the count of guest
+    /// dreams and whether there's local Lucid Path progress shape its wording.
+    @State private var showMergePrompt = false
+    @State private var pendingMergeDreamCount = 0
+    @State private var pendingMergeHasLucid = false
 
     var body: some View {
         Group {
@@ -85,15 +90,52 @@ private struct RootView: View {
         }
         .onChange(of: auth.status) { previous, status in
             if status == .signedIn {
-                store?.reconcileWithRemote()
                 store?.reconcileFeed()
+                switch auth.lastEntry {
+                case .signedIn:
+                    // Logging into an existing account: if there's guest data on this
+                    // device (dreams or Lucid Path progress), ask whether to merge it
+                    // before pulling the account's. With none, just reconcile.
+                    let dreamCount = store?.unownedLocalDreamCount() ?? 0
+                    let hasLucid = !LucidProgress.completedIDs().isEmpty
+                    if dreamCount > 0 || hasLucid {
+                        pendingMergeDreamCount = dreamCount
+                        pendingMergeHasLucid = hasLucid
+                        showMergePrompt = true
+                    } else {
+                        store?.reconcileWithRemote(claimLocalDreams: false)
+                        Task { await auth.syncLucidProgress() }
+                    }
+                case .signedUp, .none:
+                    // A new account (or a launch session-restore): adopt any
+                    // on-device dreams and Lucid Path progress into the account.
+                    store?.reconcileWithRemote(claimLocalDreams: true)
+                    Task { await auth.syncLucidProgress() }
+                }
             } else if status == .signedOut, previous == .signedIn {
                 // A real sign-out (not a guest simply launching the app, which goes
-                // .unknown → .signedOut): clear the account's local dreams so they
-                // don't linger for the next person. They're backed up on the server
-                // and rehydrate on the next sign-in.
+                // .unknown → .signedOut): clear the account's local dreams and Lucid
+                // Path progress so they don't linger for the next person. Both are
+                // backed up on the server and rehydrate on the next sign-in.
                 store?.wipeLocalData()
+                auth.clearLocalLucidProgress()
             }
+        }
+        // Logging into an existing account with guest data on the device: let the
+        // dreamer keep it (merge into the account) or discard it.
+        .alert("Merge this device's data?", isPresented: $showMergePrompt) {
+            Button("Merge") {
+                store?.reconcileWithRemote(claimLocalDreams: true)
+                Task { await auth.syncLucidProgress() }
+                showMergePrompt = false
+            }
+            Button("Don't Merge", role: .destructive) {
+                store?.reconcileWithRemote(claimLocalDreams: false)
+                Task { await auth.discardLocalLucidProgress() }
+                showMergePrompt = false
+            }
+        } message: {
+            Text(mergePromptMessage)
         }
         // Password-reset email link (halflight://reset-password?code=…) reopens
         // the app here; redeem it and present the "set a new password" screen.
@@ -123,6 +165,22 @@ private struct RootView: View {
         } message: {
             Text(auth.passwordResetError ?? "")
         }
+    }
+
+    /// The merge prompt's body, naming whatever guest data is on the device.
+    private var mergePromptMessage: String {
+        let d = pendingMergeDreamCount
+        let dreamPhrase = d == 1 ? "1 dream" : "\(d) dreams"
+        let item: String
+        if d > 0 && pendingMergeHasLucid {
+            item = "\(dreamPhrase) and your Lucid Path progress"
+        } else if pendingMergeHasLucid {
+            item = "your Lucid Path progress"
+        } else {
+            item = dreamPhrase
+        }
+        return "You have \(item) saved on this device that isn't part of your account. "
+            + "Merge it into your account? If you don't, it will be permanently deleted from this device."
     }
 
     /// Builds the store with remote backends (dream backup + social feed) when
