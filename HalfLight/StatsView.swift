@@ -12,6 +12,7 @@ import SwiftData
 struct StatsView: View {
     @Environment(DreamStore.self) private var store
     @Environment(AppRouter.self) private var router
+    @Environment(\.dismiss) private var dismiss
     @Query private var dreams: [Dream]
 
     /// The calendar year shown in the activity grid; defaults to this year.
@@ -25,35 +26,63 @@ struct StatsView: View {
         // Pushed as a destination from the Profile tab, so it uses that
         // NavigationStack rather than wrapping its own.
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    progressSection
-                    bonusBanner
-                    questsSection
-                        .id(Self.questsAnchor)
-                    streakSection
-                    achievementsSection
-                    if dreams.isEmpty {
-                        emptyHint
-                    } else {
-                        activitySection
+            VStack(spacing: 0) {
+                header
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        progressSection
+                        bonusBanner
+                        questsSection
+                            .id(Self.questsAnchor)
+                        streakSection
+                        achievementsSection
+                        if dreams.isEmpty {
+                            emptyHint
+                        } else {
+                            activitySection
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 20)
+                .tabBarClearance()
             }
-            .tabBarClearance()
             .background { DreamBackground() }
-            .navigationTitle("Progress")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
+            .toolbar(.hidden, for: .navigationBar)
+            // Hiding the nav bar disables the edge-swipe back gesture; put it back.
+            .enableSwipeBack()
             .onAppear { consumeQuestScrollIntent(proxy) }
             .onChange(of: router.scrollToQuests) { _, _ in
                 consumeQuestScrollIntent(proxy)
             }
         }
+    }
+
+    /// Back chevron followed by a left-aligned `.dreamTitle` heading, matching the
+    /// Feed / Journal / Lucid Path headers (the system nav bar is hidden so the
+    /// title isn't squeezed into a truncated toolbar bubble).
+    private var header: some View {
+        HStack(spacing: 12) {
+            Button {
+                SoundManager.shared.play(.tap)
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color.dreamText)
+            }
+            .accessibilityLabel("Back")
+
+            Text("Progress")
+                .font(.dreamTitle)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
     }
 
     /// Scroll anchor for the weekly-quests card, used when arriving from the Home

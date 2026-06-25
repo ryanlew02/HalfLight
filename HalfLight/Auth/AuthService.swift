@@ -41,6 +41,16 @@ struct ProfileInfo: Sendable {
     let usernameChangedAt: Date?
 }
 
+/// The outcome of fetching the signed-in user's profile. Distinguishes a brand
+/// new account that has no profile yet (`absent` → show the setup screen) from a
+/// transient failure such as being offline (`unreachable` → don't mistake a
+/// returning user for a new one).
+enum ProfileFetch: Sendable {
+    case found(ProfileInfo)
+    case absent
+    case unreachable
+}
+
 /// A signed-in account, identified by email (display only).
 protocol AuthBackend: Sendable {
     func currentEmail() async -> String?
@@ -59,9 +69,10 @@ protocol AuthBackend: Sendable {
     /// Create the profile row for the currently signed-in user (used to finish
     /// onboarding accounts that didn't pick a username at sign-up, e.g. Apple).
     func createProfile(username: String, firstName: String, lastName: String) async throws
-    /// The current user's existing profile, if any (so returning users aren't
-    /// asked to choose a username again).
-    func fetchProfile() async -> ProfileInfo?
+    /// The current user's existing profile. Reports `absent` when there's no
+    /// profile yet and `unreachable` when the server couldn't be reached, so a
+    /// returning user offline isn't treated as a new sign-up.
+    func fetchProfile() async -> ProfileFetch
     /// Update the current user's bio (free-text; may be empty to clear it).
     func updateBio(_ bio: String) async throws
     /// Store the current user's profile photo (cropped JPEG), or clear it with
@@ -161,16 +172,40 @@ final class AuthService {
         let email = await backend.currentEmail()
         self.email = email
         provider = (email == nil) ? .unknown : (await backend.currentProvider() ?? .unknown)
-        status = (email == nil) ? .signedOut : .signedIn
         let defaults = UserDefaults.standard
         username = defaults.string(forKey: "userUsername")
         firstName = defaults.string(forKey: "userFirstName")
         lastName = defaults.string(forKey: "userLastName")
         bio = defaults.string(forKey: "userBio")
         usernameChangedAt = defaults.object(forKey: "userUsernameChangedAt") as? Date
-        // Reinstall / new device: pull the username from the server so an existing
-        // account isn't asked to choose one again.
-        await hydrateProfileIfNeeded()
+
+        guard email != nil else {
+            status = .signedOut
+            return
+        }
+        // A reinstall can restore the keychain session while UserDefaults (the
+        // cached username) is gone. With no cached handle, pull the profile from
+        // the server *before* exposing the signed-in state, so an existing account
+        // isn't shown the setup gate. With a cached handle, show the app right away
+        // and just refresh in the background.
+        let hasCachedHandle = !(username?.isEmpty ?? true)
+        if !hasCachedHandle {
+            let outcome = await hydrateProfileIfNeeded()
+            // Offline with no cached handle (e.g. reinstall restored the session but
+            // cleared UserDefaults): we can't identify the account, so stay signed
+            // out rather than show the setup gate. The keychain session survives, so
+            // a later online launch restores them normally.
+            if case .unreachable = outcome, (username?.isEmpty ?? true) {
+                self.email = nil
+                self.provider = .unknown
+                status = .signedOut
+                return
+            }
+        }
+        status = .signedIn
+        if hasCachedHandle {
+            await hydrateProfileIfNeeded()
+        }
         await hydrateAvatarIfNeeded()
     }
 
@@ -200,11 +235,17 @@ final class AuthService {
     /// Refresh the cached profile from the account whenever signed in: the server
     /// is the source of truth for a signed-in dreamer, so this also makes the
     /// account's first name win over any locally-set name (the greeting reads
-    /// `userName`). Runs on every launch / sign-in; a failed fetch (e.g. offline)
-    /// leaves the cached values in place.
-    private func hydrateProfileIfNeeded() async {
-        guard isSignedIn else { return }
-        guard let remote = await backend.fetchProfile() else { return }
+    /// `userName`). Runs on every launch / sign-in. Returns the fetch outcome so
+    /// callers can tell a genuinely new account apart from an offline failure; a
+    /// failure (`unreachable`) leaves the cached values in place.
+    @discardableResult
+    private func hydrateProfileIfNeeded() async -> ProfileFetch {
+        // Gate on a session (email set), not on `status`, so this can run *before*
+        // we flip to `.signedIn` during `perform` — letting an existing account's
+        // username load before the profile-setup gate is ever evaluated.
+        guard email != nil else { return .unreachable }
+        let outcome = await backend.fetchProfile()
+        guard case .found(let remote) = outcome else { return outcome }
         let defaults = UserDefaults.standard
         username = remote.username
         defaults.set(remote.username, forKey: "userUsername")
@@ -227,6 +268,7 @@ final class AuthService {
             usernameChangedAt = nil
             defaults.removeObject(forKey: "userUsernameChangedAt")
         }
+        return outcome
     }
 
     /// Finish onboarding for an account with no username yet (e.g. Sign in with
@@ -393,10 +435,9 @@ final class AuthService {
     }
 
     func signIn(email: String, password: String) async {
+        // `perform` hydrates the profile + photo before flipping to signed-in, so a
+        // new device shows the right account immediately (no false setup prompt).
         await perform(provider: .email) { try await self.backend.signIn(email: email, password: password) }
-        // New device: pull the profile + photo so they're present immediately.
-        await hydrateProfileIfNeeded()
-        await hydrateAvatarIfNeeded()
     }
 
     func sendPasswordReset(email: String) async {
@@ -553,14 +594,14 @@ final class AuthService {
             }
             let appleEmail = credential.email
             let appleName = credential.fullName
+            // `perform` pulls any existing profile + photo before flipping to
+            // signed-in, so a returning Apple user isn't asked to set up again.
             await perform(provider: .apple) {
                 try await self.backend.signInWithApple(idToken: idToken, nonce: nonce, email: appleEmail)
             }
-            // Pull an existing profile if there is one; otherwise prefill the
+            // Genuinely new account (no profile on the server): prefill the
             // username-setup screen with the name Apple just gave us (first sign-in
             // only — Apple won't send it again).
-            await hydrateProfileIfNeeded()
-            await hydrateAvatarIfNeeded()
             if needsProfileSetup {
                 if let given = appleName?.givenName, (firstName?.isEmpty ?? true) {
                     firstName = given
@@ -583,7 +624,23 @@ final class AuthService {
             let email = try await work()
             self.email = email
             self.provider = provider
+            // Load the saved profile (username + name) *before* exposing the
+            // signed-in state. Otherwise an existing account on a fresh device —
+            // whose username lives only on the server — is momentarily seen as
+            // having none, which wrongly pops the profile-setup screen.
+            let outcome = await hydrateProfileIfNeeded()
+            // Offline on a device with no cached handle: we can't tell whether this
+            // account already has a profile, so don't guess. Undo the sign-in and
+            // surface a clear error instead of dropping into the setup screen.
+            if case .unreachable = outcome, (username?.isEmpty ?? true) {
+                try? await backend.signOut()
+                self.email = nil
+                self.provider = .unknown
+                errorMessage = "Couldn't reach the server. Check your connection and try again."
+                return
+            }
             status = .signedIn
+            await hydrateAvatarIfNeeded()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -666,9 +723,10 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.set(Array(taken), forKey: usernamesKey)
     }
 
-    func fetchProfile() async -> ProfileInfo? {
-        // No real server in the mock — same-device username persists locally.
-        nil
+    func fetchProfile() async -> ProfileFetch {
+        // No real server in the mock — same-device username persists locally, so
+        // there's never a remote profile to pull.
+        .absent
     }
 
     func updateBio(_ bio: String) async throws {
@@ -877,24 +935,29 @@ final class SupabaseAuthBackend: AuthBackend {
         }
     }
 
-    func fetchProfile() async -> ProfileInfo? {
+    func fetchProfile() async -> ProfileFetch {
         guard SupabaseConfig.isConfigured,
-              (try? await client.auth.session) != nil else { return nil }
+              (try? await client.auth.session) != nil else { return .unreachable }
         // `my_profile()` returns the caller's own row including their name, which
         // is private from everyone else — so the app can greet returning users by
-        // their account first name on any device.
-        let rows: [MyProfileRow]? = try? await client
-            .rpc("my_profile")
-            .execute()
-            .value
-        guard let row = rows?.first else { return nil }
-        return ProfileInfo(
-            username: row.username,
-            firstName: row.firstName ?? "",
-            lastName: row.lastName ?? "",
-            bio: row.bio ?? "",
-            usernameChangedAt: row.usernameChangedAt.flatMap(Self.parseTimestamp)
-        )
+        // their account first name on any device. A thrown error means we couldn't
+        // reach the server (offline); an empty result means no profile row yet.
+        do {
+            let rows: [MyProfileRow] = try await client
+                .rpc("my_profile")
+                .execute()
+                .value
+            guard let row = rows.first else { return .absent }
+            return .found(ProfileInfo(
+                username: row.username,
+                firstName: row.firstName ?? "",
+                lastName: row.lastName ?? "",
+                bio: row.bio ?? "",
+                usernameChangedAt: row.usernameChangedAt.flatMap(Self.parseTimestamp)
+            ))
+        } catch {
+            return .unreachable
+        }
     }
 
     func updateBio(_ bio: String) async throws {

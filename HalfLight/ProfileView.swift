@@ -50,6 +50,20 @@ struct ProfileView: View {
             }
             .onAppear { consumeProgressIntent() }
             .onChange(of: router.openProgress) { _, _ in consumeProgressIntent() }
+            // Leaving the Profile tab drops any pushed Progress screen, so coming
+            // back to Profile lands on the root rather than re-showing Progress
+            // (the tab's view stays alive, so its navigation would otherwise persist).
+            // Deferred to the next runloop so the pop isn't swept into the tab-switch
+            // animation (which would otherwise show Progress sliding closed), and with
+            // animations disabled so it just vanishes off-screen — the new tab appears.
+            .onChange(of: router.tab) { _, tab in
+                guard tab != .profile, showingProgress else { return }
+                DispatchQueue.main.async {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { showingProgress = false }
+                }
+            }
             .sheet(isPresented: $showAuth) {
                 AuthView()
             }
@@ -261,7 +275,7 @@ struct ProfileView: View {
     /// The stored profile photo as a SwiftUI `Image`, if one is set.
     private var profileImage: Image? {
         #if canImport(UIKit)
-        if let data = profilePhotoData, let uiImage = UIImage(data: data) {
+        if let data = profilePhotoData, let uiImage = AvatarImageCache.image(for: data) {
             return Image(uiImage: uiImage)
         }
         #endif

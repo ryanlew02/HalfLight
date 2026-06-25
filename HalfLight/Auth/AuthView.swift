@@ -61,6 +61,13 @@ struct AuthView: View {
             .onChange(of: auth.isSignedIn) { _, signedIn in
                 if signedIn { dismiss() }
             }
+            // A tapped password-reset link redeems a recovery session and asks to
+            // present the "set a new password" screen from RootView. That cover
+            // can't appear while this sheet is up, so close ourselves and let it
+            // through.
+            .onChange(of: auth.isPresentingPasswordReset) { _, presenting in
+                if presenting { dismiss() }
+            }
         }
     }
 

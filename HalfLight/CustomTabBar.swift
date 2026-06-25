@@ -34,13 +34,12 @@ struct CustomTabBar: View {
     private func tabButton(_ tab: AppTab) -> some View {
         let isSelected = selection == tab
         return Button {
-            if selection != tab {
-                SoundManager.shared.play(.tap)
-            }
-            // Gentle, low-bounce transition for a more subtle feel.
-            withAnimation(.easeInOut(duration: 0.28)) {
-                selection = tab
-            }
+            guard selection != tab else { return }
+            // Update the selection first so the icon lights up this same frame —
+            // the tap sound (which can spin up the audio engine on first use) runs
+            // after, never gating the visual feedback.
+            selection = tab
+            SoundManager.shared.play(.tap)
         } label: {
             Image(systemName: tab.icon)
                 .font(.system(size: 22))
@@ -57,6 +56,9 @@ struct CustomTabBar: View {
                 .shadow(color: Color.dreamPrimary.opacity(isSelected ? 0.55 : 0), radius: 6)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
+                // The icon's own quick animation — independent of (and faster than)
+                // the screen crossfade — so the glow snaps on the instant you tap.
+                .animation(.easeOut(duration: 0.1), value: isSelected)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)

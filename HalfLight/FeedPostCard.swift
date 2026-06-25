@@ -295,7 +295,7 @@ struct FeedAvatar: View {
 
     private var image: Image? {
         #if canImport(UIKit)
-        if let photoData, let uiImage = UIImage(data: photoData) {
+        if let photoData, let uiImage = AvatarImageCache.image(for: photoData) {
             return Image(uiImage: uiImage)
         }
         #endif

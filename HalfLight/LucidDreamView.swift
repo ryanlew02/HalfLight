@@ -32,7 +32,11 @@ struct LucidDreamView: View {
 
         return NavigationStack {
             ScrollView {
-                VStack(spacing: 0) {
+                // Lazy so opening the tab only builds the sections actually on
+                // screen — not all nine and every lesson node at once. Each section
+                // map declares a fixed height, so the lazy stack still scrolls and
+                // sizes correctly before a section is realized.
+                LazyVStack(spacing: 0) {
                     Text("Lucid Path")
                         .font(.dreamTitle)
                         .frame(maxWidth: .infinity, alignment: .leading)

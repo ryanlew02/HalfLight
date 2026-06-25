@@ -12,6 +12,7 @@ import SwiftData
 struct FeedView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(DreamStore.self) private var store
+    @Environment(AppRouter.self) private var router
     // The full set of posts; `FeedRanker` decides the order (see `rankedPosts`).
     // Newest-first here only gives a stable input and a sensible cold-start order.
     @Query(sort: \FeedPost.createdAt, order: .reverse) private var posts: [FeedPost]
@@ -74,19 +75,29 @@ struct FeedView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if posts.isEmpty {
-                    emptyState
-                } else {
-                    feedPager
+            VStack(spacing: 0) {
+                // Matches the Journal / Lucid Path heading style (a left-aligned
+                // `.dreamTitle` instead of the system inline nav title).
+                Text("Feed")
+                    .font(.dreamTitle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+
+                Group {
+                    if posts.isEmpty {
+                        emptyState
+                    } else {
+                        // Build the dream lookup once per render and thread it down,
+                        // rather than rebuilding the whole dictionary for every card.
+                        feedPager(dreamsByID: dreamsByID)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background { DreamBackground() }
-            .navigationTitle("Feed")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(item: $selectedRoute) { route in
                 DreamDetailView(dream: route.dream, feedAuthor: route.author, postedAt: route.postedAt)
             }
@@ -96,7 +107,11 @@ struct FeedView: View {
             .sheet(item: $commentsPost) { post in
                 CommentsView(post: post)
             }
-            .task {
+            // The feed stays alive across tab switches (it isn't rebuilt), so refresh
+            // whenever the Feed tab becomes active — `initial: true` covers the first
+            // time it's opened.
+            .onChange(of: router.tab, initial: true) { _, tab in
+                guard tab == .feed else { return }
                 store.reconcileFeed()
                 store.refreshFeedAuthors()
                 refreshRanking()
@@ -115,7 +130,7 @@ struct FeedView: View {
     /// `containerRelativeFrame(.vertical)` sizes each page to exactly one screen so
     /// `.paging` advances by a single dream, while the card keeps an inset margin
     /// (it doesn't run to the screen edges).
-    private var feedPager: some View {
+    private func feedPager(dreamsByID: [UUID: Dream]) -> some View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(rankedPosts) { post in

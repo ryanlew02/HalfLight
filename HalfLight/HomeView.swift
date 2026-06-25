@@ -578,6 +578,13 @@ struct HomeView: View {
                         .lineLimit(1)
                         .fixedSize()
                 }
+
+                // What the quest actually asks for, below the progress bar.
+                Text(localized(quest.detail))
+                    .font(.dreamBody(11))
+                    .foregroundStyle(Color.dreamSubtle)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Image(systemName: "chevron.right")

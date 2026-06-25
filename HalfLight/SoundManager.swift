@@ -65,6 +65,16 @@ final class SoundManager {
         player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
     }
 
+    /// Spin up the audio engine and pre-synthesize the common tap sound ahead of
+    /// time — call once at launch (off the critical path) so the first UI tap
+    /// doesn't pay the engine-start cost and stall its visual feedback. A no-op
+    /// once warmed or when sound is disabled.
+    func warmUp() {
+        guard soundEnabled, !started else { return }
+        startIfNeeded()
+        if cache[.tap] == nil { cache[.tap] = makeBuffer(for: .tap) }
+    }
+
     // MARK: - Engine
 
     private func startIfNeeded() {

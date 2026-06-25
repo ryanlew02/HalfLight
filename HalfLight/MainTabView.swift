@@ -25,14 +25,16 @@ struct MainTabView: View {
 
     @State private var router = AppRouter()
     @State private var tabBarHeight: CGFloat = 0
+    /// Tabs the dreamer has opened at least once. Their screens stay built and are
+    /// just shown/hidden, so returning to a tab is instant instead of a cold reload.
+    @State private var visitedTabs: Set<AppTab> = []
+    /// Covers startup with the dreamy launch screen while every tab is built behind
+    /// it, so the app reveals with all screens ready (no first-open lag).
+    @State private var isWarmingUp = true
 
     var body: some View {
         @Bindable var router = router
-        ZStack {
-            currentScreen
-                .id(router.tab)
-                .transition(.opacity)
-        }
+        tabHost
             .foregroundStyle(Color.dreamText)
             .environment(\.tabBarHeight, tabBarHeight)
             .environment(router)
@@ -79,6 +81,11 @@ struct MainTabView: View {
                 refreshReminders()
                 updateWidgetSnapshot()
                 consumeQuickRecordRequest()
+                // Build the (static) lesson curriculum off the main thread now, so the
+                // first open of the Lucid tab doesn't pay that one-time cost on-screen.
+                Task.detached(priority: .utility) { _ = LucidCurriculum.sections }
+                // Build every tab behind the launch screen, then reveal the app.
+                await warmUpAndReveal()
             }
             .onChange(of: unlockedAchievementCount) { _, _ in
                 let newly = AchievementTracker.newlyUnlocked(for: achievementStats)
@@ -105,6 +112,14 @@ struct MainTabView: View {
             .onChange(of: store.skippedDays) { _, _ in refreshReminders(); updateWidgetSnapshot() }
             .onChange(of: reminderEnabled) { _, _ in refreshReminders() }
             .onChange(of: morningReminderMinutes) { _, _ in refreshReminders() }
+            // Topmost layer: the dreamy launch screen, shown until warm-up finishes.
+            .overlay {
+                if isWarmingUp {
+                    LaunchLoadingView()
+                        .transition(.opacity)
+                        .zIndex(100)
+                }
+            }
     }
 
     // MARK: - Widgets & quick capture
@@ -187,9 +202,54 @@ struct MainTabView: View {
         Achievement.all.reduce(0) { $0 + ($1.isUnlocked(for: achievementStats) ? 1 : 0) }
     }
 
+    /// Hosts every visited tab in one stack, showing only the selected one. A tab's
+    /// screen isn't built until first opened (lazy), then kept alive — so switching
+    /// back is an opacity flip rather than a full rebuild + re-run of its `.task`.
+    private var tabHost: some View {
+        ZStack {
+            ForEach(AppTab.allCases) { tab in
+                if visitedTabs.contains(tab) {
+                    screen(for: tab)
+                        .opacity(router.tab == tab ? 1 : 0)
+                        // Instant switch (no crossfade): the outgoing screen is hidden
+                        // the same frame, so a pushed screen being reset on tab change
+                        // (e.g. Profile's Progress) never shows a close animation.
+                        .allowsHitTesting(router.tab == tab)
+                        .accessibilityHidden(router.tab != tab)
+                        .zIndex(router.tab == tab ? 1 : 0)
+                }
+            }
+        }
+        .onChange(of: router.tab, initial: true) { _, tab in
+            visitedTabs.insert(tab)
+        }
+    }
+
+    /// Build every tab behind the launch screen, then fade the launch screen out so
+    /// the app reveals with all screens already constructed — making the first tap on
+    /// each one instant. Each tab is marked visited in turn (the keep-alive host then
+    /// builds it), staggered so no single build stalls a frame, and the dreamy screen
+    /// is held a graceful minimum so it doesn't just blink past on a fast device.
+    private func warmUpAndReveal() async {
+        let start = Date()
+        // Spin up the tap sound's audio engine now so the first tab tap is instant.
+        SoundManager.shared.warmUp()
+        for tab in AppTab.allCases where !visitedTabs.contains(tab) {
+            visitedTabs.insert(tab)
+            try? await Task.sleep(for: .milliseconds(160))
+        }
+        // Hold the launch screen for a minimum so it reads as intentional, not a flash.
+        let minimum: TimeInterval = 1.7
+        let elapsed = Date().timeIntervalSince(start)
+        if elapsed < minimum {
+            try? await Task.sleep(for: .seconds(minimum - elapsed))
+        }
+        withAnimation(.easeInOut(duration: 0.6)) { isWarmingUp = false }
+    }
+
     @ViewBuilder
-    private var currentScreen: some View {
-        switch router.tab {
+    private func screen(for tab: AppTab) -> some View {
+        switch tab {
         case .home: HomeView()
         case .lucid: LucidDreamView()
         case .journal: DreamJournalView()

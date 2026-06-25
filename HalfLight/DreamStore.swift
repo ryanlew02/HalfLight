@@ -168,6 +168,38 @@ final class DreamStore {
         save()
     }
 
+    // MARK: - Account lifecycle
+
+    /// The account whose dreams currently populate the local store, remembered so a
+    /// later sign-in by a *different* account can defensively clear data left behind
+    /// by an interrupted sign-out. `nil` (absent) means a guest/anonymous session.
+    private static let lastOwnerKey = "lastSignedInUserID"
+
+    /// Drop every locally cached dream, feed post, follow, comment and tombstone.
+    ///
+    /// Called on sign-out (and defensively when a different account signs in). The
+    /// account's dreams live on the server and rehydrate via `reconcileWithRemote`
+    /// on the next sign-in, so clearing the local copies keeps one person's dreams
+    /// from lingering for the next person on the device. A pure guest (never signed
+    /// in) never reaches this, so their local-only dreams are safe.
+    func wipeLocalData() {
+        deleteAll(Dream.self)
+        deleteAll(FeedPost.self)
+        deleteAll(Follow.self)
+        deleteAll(Comment.self)
+        deleteAll(DeletedDream.self)
+        save()
+        // Per-device one-time repairs should re-evaluate against the next account,
+        // and the owner marker is cleared until the next sign-in re-stamps it.
+        UserDefaults.standard.removeObject(forKey: "didRepublishVisibility_v1")
+        UserDefaults.standard.removeObject(forKey: Self.lastOwnerKey)
+    }
+
+    private func deleteAll<T: PersistentModel>(_ type: T.Type) {
+        let items = (try? context.fetch(FetchDescriptor<T>())) ?? []
+        items.forEach(context.delete)
+    }
+
     // MARK: - Remote sync
 
     /// One-time repair for dreams whose public/lucid flags never made it to the
@@ -202,6 +234,16 @@ final class DreamStore {
         guard let sync else { return }
         Task {
             guard let uid = await sync.currentUserID() else { return }
+            // If the local store still holds a *different* account's data — e.g. a
+            // sign-out whose wipe didn't complete — clear it before pulling this
+            // account's, so one person's dreams never bleed into another's session.
+            // A first sign-in from guest has no prior owner, so its dreams survive
+            // here and get claimed by `merge` below.
+            let last = UserDefaults.standard.string(forKey: Self.lastOwnerKey)
+            if let last, last != uid.uuidString {
+                wipeLocalData()
+            }
+            UserDefaults.standard.set(uid.uuidString, forKey: Self.lastOwnerKey)
             guard let remote = try? await sync.fetchAll(for: uid) else { return }
             await merge(remote: remote, userID: uid, sync: sync)
         }

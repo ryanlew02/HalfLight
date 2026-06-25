@@ -59,7 +59,9 @@ private struct RootView: View {
                 .environment(\.layoutDirection, language.current.isRTL ? .rightToLeft : .leftToRight)
                 .id(language.current)
             } else {
-                Color.clear
+                // Before the store is ready, show the launch backdrop so there's no
+                // flash before MainTabView's dreamy loading screen takes over.
+                NightSkyBackground()
             }
         }
         .task {
@@ -81,10 +83,16 @@ private struct RootView: View {
             // via onChange below.
             await auth.restore()
         }
-        .onChange(of: auth.status) { _, status in
+        .onChange(of: auth.status) { previous, status in
             if status == .signedIn {
                 store?.reconcileWithRemote()
                 store?.reconcileFeed()
+            } else if status == .signedOut, previous == .signedIn {
+                // A real sign-out (not a guest simply launching the app, which goes
+                // .unknown → .signedOut): clear the account's local dreams so they
+                // don't linger for the next person. They're backed up on the server
+                // and rehydrate on the next sign-in.
+                store?.wipeLocalData()
             }
         }
         // Password-reset email link (halflight://reset-password?code=…) reopens
