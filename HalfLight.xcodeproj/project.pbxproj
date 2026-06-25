@@ -52,11 +52,21 @@
 			);
 			target = A45B4FBF2FEADD790008CEEC /* HalfLightWidgetsExtension */;
 		};
+		FE57E7000000000000000001 /* Exceptions for "HalfLight" folder in "HalfLight" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 249705332FDE065D00D64129 /* HalfLight */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		249705362FDE065D00D64129 /* HalfLight */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FE57E7000000000000000001 /* Exceptions for "HalfLight" folder in "HalfLight" target */,
+			);
 			path = HalfLight;
 			sourceTree = "<group>";
 		};
@@ -399,6 +409,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HalfLight/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "HalfLight uses the microphone so you can speak your dreams instead of typing them.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "HalfLight transcribes your spoken dreams into text using speech recognition.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -445,6 +456,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HalfLight/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "HalfLight uses the microphone so you can speak your dreams instead of typing them.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "HalfLight transcribes your spoken dreams into text using speech recognition.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;

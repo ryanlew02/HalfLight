@@ -8,7 +8,11 @@
 //
 // Config (Supabase secrets):
 //   APPLE_BUNDLE_ID        e.g. LanternHours.HalfLight
-//   APP_STORE_ENVIRONMENT  "Sandbox" (testing) or "Production" (release)
+//   APP_STORE_ENVIRONMENT  which environment to try FIRST: "Production" (release,
+//                          default) or "Sandbox". Verification automatically falls
+//                          back to the other environment on a mismatch, so a single
+//                          deployment serves both real customers (Production) and
+//                          Apple's App Review reviewers (who purchase in Sandbox).
 //
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
@@ -33,7 +37,15 @@ export interface Entitlement {
 }
 
 const BUNDLE_ID = Deno.env.get("APPLE_BUNDLE_ID") ?? "LanternHours.HalfLight";
-const APP_ENV = (Deno.env.get("APP_STORE_ENVIRONMENT") ?? "Production") === "Sandbox"
+
+// The environment to attempt first. Real customers are Production, so that's the
+// default; we always fall back to the other environment on a mismatch (see
+// `verifyWithFallback`), which is what lets Apple's reviewers — who buy in
+// Sandbox during App Review — pass verification without a manual toggle.
+const PRIMARY_ENV = (Deno.env.get("APP_STORE_ENVIRONMENT") ?? "Production") === "Sandbox"
+  ? Environment.SANDBOX
+  : Environment.PRODUCTION;
+const FALLBACK_ENV = PRIMARY_ENV === Environment.PRODUCTION
   ? Environment.SANDBOX
   : Environment.PRODUCTION;
 
@@ -45,23 +57,54 @@ const APPLE_ROOT_URLS = [
   "https://www.apple.com/certificateauthority/AppleRootCA-G2.cer",
 ];
 
-let verifierPromise: Promise<SignedDataVerifier> | null = null;
+let rootsPromise: Promise<Buffer[]> | null = null;
+function getRoots(): Promise<Buffer[]> {
+  if (!rootsPromise) {
+    rootsPromise = Promise.all(
+      APPLE_ROOT_URLS.map(async (url) => {
+        const res = await fetch(url);
+        return Buffer.from(await res.arrayBuffer());
+      }),
+    );
+  }
+  return rootsPromise;
+}
 
-async function getVerifier(): Promise<SignedDataVerifier> {
-  if (!verifierPromise) {
-    verifierPromise = (async () => {
-      const roots = await Promise.all(
-        APPLE_ROOT_URLS.map(async (url) => {
-          const res = await fetch(url);
-          return Buffer.from(await res.arrayBuffer());
-        }),
-      );
+// One verifier per environment, memoized. A verifier validates the signature +
+// chain + bundle id and that the payload's environment matches its own, so we
+// keep both on hand and pick the one the payload was actually signed in.
+const verifiers = new Map<Environment, Promise<SignedDataVerifier>>();
+function getVerifier(env: Environment): Promise<SignedDataVerifier> {
+  let p = verifiers.get(env);
+  if (!p) {
+    p = (async () => {
+      const roots = await getRoots();
       // enableOnlineChecks=false: skip OCSP (no outbound cert-revocation calls);
       // signature + chain + bundle/environment checks still run.
-      return new SignedDataVerifier(roots, false, APP_ENV, BUNDLE_ID);
+      return new SignedDataVerifier(roots, false, env, BUNDLE_ID);
     })();
+    verifiers.set(env, p);
   }
-  return verifierPromise;
+  return p;
+}
+
+// Run a verify operation against the primary environment and, if that fails,
+// retry against the other. This makes one deployment accept both Production
+// (real customers) and Sandbox (App Review reviewers + our own sandbox testing)
+// payloads. The original error is surfaced if a payload is invalid in BOTH
+// environments, so genuinely bad signatures still fail closed.
+async function verifyWithFallback<T>(
+  op: (verifier: SignedDataVerifier) => Promise<T>,
+): Promise<T> {
+  try {
+    return await op(await getVerifier(PRIMARY_ENV));
+  } catch (primaryError) {
+    try {
+      return await op(await getVerifier(FALLBACK_ENV));
+    } catch {
+      throw primaryError;
+    }
+  }
 }
 
 /// Map a decoded transaction (+ optional notification type) to an Entitlement.
@@ -94,27 +137,29 @@ function toEntitlement(
     productId: txn.productId ?? "",
     expiresMs,
     appAccountToken: txn.appAccountToken,
-    environment: txn.environment ?? (APP_ENV === Environment.SANDBOX ? "Sandbox" : "Production"),
+    environment: txn.environment ?? (PRIMARY_ENV === Environment.SANDBOX ? "Sandbox" : "Production"),
     status,
   };
 }
 
 /// Verify a single signed transaction JWS (from the app) into an Entitlement.
 export async function verifyTransactionJWS(jws: string): Promise<Entitlement> {
-  const verifier = await getVerifier();
-  const txn = await verifier.verifyAndDecodeTransaction(jws);
-  return toEntitlement(txn);
+  return verifyWithFallback(async (verifier) => {
+    const txn = await verifier.verifyAndDecodeTransaction(jws);
+    return toEntitlement(txn);
+  });
 }
 
 /// Verify an App Store Server Notification V2 payload into an Entitlement (or null
 /// when it carries no transaction, e.g. a test notification).
 export async function verifyNotification(signedPayload: string): Promise<Entitlement | null> {
-  const verifier = await getVerifier();
-  const payload = await verifier.verifyAndDecodeNotification(signedPayload);
-  const signedTxn = payload.data?.signedTransactionInfo;
-  if (!signedTxn) return null;
-  const txn = await verifier.verifyAndDecodeTransaction(signedTxn);
-  return toEntitlement(txn, payload.notificationType);
+  return verifyWithFallback(async (verifier) => {
+    const payload = await verifier.verifyAndDecodeNotification(signedPayload);
+    const signedTxn = payload.data?.signedTransactionInfo;
+    if (!signedTxn) return null;
+    const txn = await verifier.verifyAndDecodeTransaction(signedTxn);
+    return toEntitlement(txn, payload.notificationType);
+  });
 }
 
 /// Service-role Supabase client (writes the RLS-protected subscriptions table).

@@ -74,6 +74,12 @@ protocol AuthBackend: Sendable {
     func updateUsername(_ username: String) async throws
     func sendPasswordReset(email: String) async throws
     func changePassword(currentPassword: String, newPassword: String) async throws
+    /// Exchange a tapped password-reset deep link for a (recovery) session, so the
+    /// user can set a new password without knowing the old one.
+    func handlePasswordResetLink(_ url: URL) async throws
+    /// Set a new password for the user authenticated by the current session
+    /// (used right after `handlePasswordResetLink`). No current password needed.
+    func updatePassword(_ newPassword: String) async throws
     func signOut() async throws
     /// Permanently delete the current user's account and all server-side data.
     func deleteAccount() async throws
@@ -106,6 +112,13 @@ final class AuthService {
     var errorMessage: String?
     /// A transient success message (e.g. password-reset confirmation).
     var infoMessage: String?
+
+    /// Set once a password-reset deep link has been exchanged for a recovery
+    /// session; drives the modal "set a new password" screen.
+    var isPresentingPasswordReset = false
+    /// Surfaced (as an alert) when a tapped reset link couldn't be redeemed
+    /// (expired, already used, or opened on a different device).
+    var passwordResetError: String?
 
     private let backend: AuthBackend
     /// Raw nonce shared between the Apple request and its completion.
@@ -399,6 +412,48 @@ final class AuthService {
         }
     }
 
+    /// Whether a URL is our password-reset deep link (halflight://reset-password).
+    func isPasswordResetLink(_ url: URL) -> Bool {
+        url.scheme == "halflight" && url.host == "reset-password"
+    }
+
+    /// Handle a tapped password-reset link: redeem it for a recovery session and,
+    /// on success, present the "set a new password" screen. Ignores unrelated URLs.
+    func handlePasswordResetLink(_ url: URL) async {
+        guard isPasswordResetLink(url) else { return }
+        isWorking = true
+        errorMessage = nil
+        passwordResetError = nil
+        defer { isWorking = false }
+        do {
+            try await backend.handlePasswordResetLink(url)
+            isPresentingPasswordReset = true
+        } catch {
+            passwordResetError = error.localizedDescription
+        }
+    }
+
+    /// Set the new password using the recovery session from the reset link, then
+    /// bring the app to a signed-in state. Returns `true` on success.
+    @discardableResult
+    func completePasswordReset(newPassword: String) async -> Bool {
+        isWorking = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isWorking = false }
+        do {
+            try await backend.updatePassword(newPassword)
+            // The recovery session is a full session now — sync profile/state.
+            await restore()
+            isPresentingPasswordReset = false
+            infoMessage = "Your password has been updated."
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     /// Returns `true` on success so the caller can clear fields / dismiss.
     @discardableResult
     func changePassword(current: String, new: String) async -> Bool {
@@ -645,6 +700,17 @@ final class MockAuthBackend: AuthBackend {
     }
 
     func changePassword(currentPassword: String, newPassword: String) async throws {
+        guard newPassword.count >= 6 else {
+            throw AuthError.message("New password must be at least 6 characters.")
+        }
+        // No stored password in the mock — pretend the update succeeded.
+    }
+
+    func handlePasswordResetLink(_ url: URL) async throws {
+        // No real backend — accept any halflight://reset-password link.
+    }
+
+    func updatePassword(_ newPassword: String) async throws {
         guard newPassword.count >= 6 else {
             throw AuthError.message("New password must be at least 6 characters.")
         }
@@ -928,6 +994,26 @@ final class SupabaseAuthBackend: AuthBackend {
             _ = try await client.auth.signIn(email: email, password: currentPassword)
         } catch {
             throw AuthError.message("Your current password is incorrect.")
+        }
+        try await client.auth.update(user: UserAttributes(password: newPassword))
+    }
+
+    func handlePasswordResetLink(_ url: URL) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        // PKCE flow: the link carries `?code=…`; this exchanges it (using the
+        // verifier stored when the reset was requested on this device) for a
+        // recovery session. Throws if the link is expired or already used.
+        do {
+            try await client.auth.session(from: url)
+        } catch {
+            throw AuthError.message("This reset link has expired or already been used. Request a new one.")
+        }
+    }
+
+    func updatePassword(_ newPassword: String) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard (try? await client.auth.session) != nil else {
+            throw AuthError.message("Your reset link is no longer valid. Request a new one.")
         }
         try await client.auth.update(user: UserAttributes(password: newPassword))
     }

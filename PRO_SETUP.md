@@ -53,7 +53,7 @@ before calling Claude, so the Anthropic bill is protected even if someone bypass
 ```sh
 # Secrets used by the verification functions
 supabase secrets set APPLE_BUNDLE_ID=LanternHours.HalfLight
-supabase secrets set APP_STORE_ENVIRONMENT=Sandbox   # switch to Production at release
+supabase secrets set APP_STORE_ENVIRONMENT=Production   # use Sandbox while testing pre-release
 
 # Apply the new entitlements table + RPC
 supabase db push    # applies supabase/migrations/20260623150000_subscriptions.sql

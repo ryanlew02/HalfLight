@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Custom URL scheme so the password-reset email link
+	  (halflight://reset-password?code=…) reopens the app. The rest of the
+	  app's Info.plist keys are still generated from build settings
+	  (GENERATE_INFOPLIST_FILE = YES) and merged with the keys here.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>LanternHours.HalfLight</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>halflight</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

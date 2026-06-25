@@ -87,6 +87,34 @@ private struct RootView: View {
                 store?.reconcileFeed()
             }
         }
+        // Password-reset email link (halflight://reset-password?code=…) reopens
+        // the app here; redeem it and present the "set a new password" screen.
+        .onOpenURL { url in
+            Task { await auth.handlePasswordResetLink(url) }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { auth.isPresentingPasswordReset },
+            set: { auth.isPresentingPasswordReset = $0 }
+        )) {
+            ResetPasswordView()
+                .environment(auth)
+                .environment(language)
+                .tint(.dreamPrimary)
+                .preferredColorScheme(theme.colorScheme)
+                .environment(\.locale, language.current.locale)
+                .environment(\.layoutDirection, language.current.isRTL ? .rightToLeft : .leftToRight)
+        }
+        .alert(
+            "Couldn't open reset link",
+            isPresented: Binding(
+                get: { auth.passwordResetError != nil },
+                set: { if !$0 { auth.passwordResetError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { auth.passwordResetError = nil }
+        } message: {
+            Text(auth.passwordResetError ?? "")
+        }
     }
 
     /// Builds the store with remote backends (dream backup + social feed) when

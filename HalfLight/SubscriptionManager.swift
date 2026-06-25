@@ -7,7 +7,7 @@
 //  pattern (see `DreamAnalyzer` / `AuthService`) so it injects via `.environment`.
 //
 //  Two auto-renewable products in one subscription group:
-//    • monthly — $10.99 / month
+//    • monthly — $9.99 / month
 //    • yearly  — $49.99 / year, with a 1-week free trial intro offer
 //
 //  The client gates the UI; the server is the source of truth for the bill. After
