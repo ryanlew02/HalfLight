@@ -16,6 +16,10 @@ struct FeedPostCard: View {
     /// The source dream, when it lives locally — drives the mood, AI insight, and
     /// tags. `nil` falls back to the post's own title/description snapshot.
     var dream: Dream?
+    /// The author's profile photo resolved by @handle (fetched from their profile).
+    /// Falls back to the snapshot captured on the post when not provided — see
+    /// `displayPhoto`.
+    var resolvedPhoto: Data? = nil
     /// Open the full dream. Fired by tapping the card outside the action buttons.
     var onOpen: () -> Void = {}
     /// Open the author's profile. Fired by tapping their photo, name, or handle.
@@ -189,6 +193,13 @@ struct FeedPostCard: View {
 
     // MARK: - Author
 
+    /// The author's profile photo: the freshly resolved one when supplied, else the
+    /// snapshot stored on the post (kept current for your own posts; `nil` for other
+    /// dreamers, who then fall back to initials until their avatar is fetched).
+    private var displayPhoto: Data? {
+        post.authorPhoto ?? resolvedPhoto
+    }
+
     private var authorRow: some View {
         HStack(spacing: DreamMetric.md) {
             // The photo, name, and handle together open the author's profile.
@@ -197,7 +208,7 @@ struct FeedPostCard: View {
                 onOpenProfile()
             } label: {
                 HStack(spacing: DreamMetric.md) {
-                    FeedAvatar(photoData: post.authorPhoto, name: post.authorName, size: 40)
+                    FeedAvatar(photoData: displayPhoto, name: post.authorName, size: 40)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(post.authorName)

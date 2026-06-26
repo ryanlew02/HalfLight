@@ -66,3 +66,7 @@ fastlane/test_output
 
 # macOS
 .DS_Store
+
+# APNs / signing keys — secrets, never commit
+*.p8
+AuthKey_*.p8

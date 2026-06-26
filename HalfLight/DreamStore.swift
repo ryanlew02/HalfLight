@@ -187,6 +187,7 @@ final class DreamStore {
         deleteAll(FeedPost.self)
         deleteAll(Follow.self)
         deleteAll(Comment.self)
+        deleteAll(AppNotification.self)
         deleteAll(DeletedDream.self)
         save()
         // Per-device one-time repairs should re-evaluate against the next account,
@@ -410,17 +411,18 @@ final class DreamStore {
         save()
     }
 
-    /// Re-snapshot every feed post's author (photo / name / handle) from the
-    /// current profile, so editing your profile shows up on dreams you've already
-    /// shared. All posts belong to the signed-in dreamer until a multi-user
-    /// backend exists, so this is where a periodic remote profile sync will live.
+    /// Re-snapshot the signed-in dreamer's *own* feed posts (photo / name / handle)
+    /// from the current profile, so editing your profile shows up on dreams you've
+    /// already shared. Own posts are the ones backed by a local dream; everyone
+    /// else's posts keep the author snapshot pulled from the server by `mergeFeed`.
     /// Cheap and idempotent — only writes when something actually changed.
     func refreshFeedAuthors() {
         let posts = (try? context.fetch(FetchDescriptor<FeedPost>())) ?? []
         guard !posts.isEmpty else { return }
+        let myDreamIDs = Set(((try? context.fetch(FetchDescriptor<Dream>())) ?? []).map(\.id))
         let author = currentAuthor()
         var changed = false
-        for post in posts {
+        for post in posts where myDreamIDs.contains(post.dreamID) {
             if post.authorName != author.name { post.authorName = author.name; changed = true }
             if post.authorUsername != author.username { post.authorUsername = author.username; changed = true }
             if post.authorPhoto != author.photo { post.authorPhoto = author.photo; changed = true }
@@ -666,6 +668,69 @@ final class DreamStore {
         save()
     }
 
+    // MARK: - Notifications
+
+    /// Pull the dreamer's activity (likes/comments on their posts) into the local
+    /// cache so the bell badge and Activity screen reflect the server. Safe to call
+    /// on launch / sign-in and when the Profile tab appears.
+    func reconcileNotifications() {
+        guard let feedSync else { return }
+        Task {
+            let remote = (try? await feedSync.fetchNotifications(limit: 100)) ?? []
+            await mergeNotifications(remote: remote)
+        }
+    }
+
+    private func mergeNotifications(remote: [FeedNotificationRecord]) async {
+        let locals = (try? context.fetch(FetchDescriptor<AppNotification>())) ?? []
+        var byID = Dictionary(locals.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let remoteIDs = Set(remote.map(\.id))
+
+        for record in remote {
+            if let note = byID[record.id] {
+                note.isRead = record.readAt != nil
+                note.postTitle = record.postTitle
+                note.actorUsername = record.actorUsername
+                note.actorName = record.actorName
+                note.commentText = record.commentText
+            } else {
+                let note = AppNotification(
+                    id: record.id,
+                    type: record.type,
+                    actorUsername: record.actorUsername,
+                    actorName: record.actorName,
+                    postID: record.postID,
+                    postTitle: record.postTitle,
+                    commentText: record.commentText,
+                    createdAt: record.createdAt,
+                    isRead: record.readAt != nil
+                )
+                context.insert(note)
+                byID[record.id] = note
+            }
+        }
+
+        // The server is the source of truth: drop locals it no longer returns
+        // (e.g. a like was withdrawn, or a comment deleted).
+        for note in locals where !remoteIDs.contains(note.id) {
+            context.delete(note)
+        }
+
+        save()
+    }
+
+    /// Mark every notification read locally and clear the server's unread flags.
+    func markNotificationsRead() {
+        let unread = (try? context.fetch(
+            FetchDescriptor<AppNotification>(predicate: #Predicate { !$0.isRead })
+        )) ?? []
+        guard !unread.isEmpty else { return }
+        unread.forEach { $0.isRead = true }
+        save()
+        guard let feedSync else { return }
+        Task { try? await feedSync.markAllNotificationsRead() }
+    }
+
     // MARK: - Internals
 
     private func save() {
@@ -744,7 +809,7 @@ enum PreviewData {
     /// An in-memory container seeded with samples, for SwiftUI previews.
     static let container: ModelContainer = {
         let container = try! ModelContainer(
-            for: Dream.self, DeletedDream.self, FeedPost.self, Follow.self, Comment.self,
+            for: Dream.self, DeletedDream.self, FeedPost.self, Follow.self, Comment.self, AppNotification.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         for dream in Dream.makeSamples() {

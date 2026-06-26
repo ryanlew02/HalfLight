@@ -94,6 +94,30 @@ struct FeedCommentRecord: Codable, Sendable {
     }
 }
 
+/// Wire shape of a row in `notifications` — a like/comment on the dreamer's post.
+struct FeedNotificationRecord: Codable, Sendable {
+    var id: UUID
+    var type: String
+    var actorUsername: String
+    var actorName: String
+    var postID: UUID?
+    var postTitle: String
+    var commentText: String?
+    var createdAt: Date
+    var readAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, type
+        case actorUsername = "actor_username"
+        case actorName = "actor_name"
+        case postID = "post_id"
+        case postTitle = "post_title"
+        case commentText = "comment_text"
+        case createdAt = "created_at"
+        case readAt = "read_at"
+    }
+}
+
 /// Remote feed operations. A `nil` sync (no package / not configured) keeps the
 /// feed local-only — exactly today's behavior.
 protocol FeedSyncing: Sendable {
@@ -120,6 +144,10 @@ protocol FeedSyncing: Sendable {
     func followedUsernames() async throws -> [String]
     func follow(username: String) async throws
     func unfollow(username: String) async throws
+
+    // Notifications
+    func fetchNotifications(limit: Int) async throws -> [FeedNotificationRecord]
+    func markAllNotificationsRead() async throws
 }
 
 #if canImport(Supabase)
@@ -267,7 +295,35 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
             .execute()
     }
 
+    // MARK: Notifications
+
+    func fetchNotifications(limit: Int) async throws -> [FeedNotificationRecord] {
+        guard let uid = await currentUserID() else { return [] }
+        return try await client.from("notifications")
+            .select()
+            .eq("recipient_id", value: uid.uuidString)
+            .order("created_at", ascending: false)
+            .limit(limit)
+            .execute()
+            .value
+    }
+
+    func markAllNotificationsRead() async throws {
+        guard let uid = await currentUserID() else { return }
+        try await client.from("notifications")
+            .update(ReadUpdate(readAt: .now))
+            .eq("recipient_id", value: uid.uuidString)
+            .is("read_at", value: nil)
+            .execute()
+    }
+
     // MARK: Small row shapes
+
+    private struct ReadUpdate: Codable {
+        let readAt: Date
+        enum CodingKeys: String, CodingKey { case readAt = "read_at" }
+    }
+
 
     private struct LikeRow: Codable {
         let userID: UUID

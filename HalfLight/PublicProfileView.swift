@@ -173,13 +173,23 @@ struct PublicProfileView: View {
     @ViewBuilder
     private var bioCard: some View {
         if let bio, !bio.isEmpty {
-            Text(bio)
-                .font(.dreamBody(15))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(DreamMetric.lg)
-                .dreamCard()
+            VStack(alignment: .leading, spacing: DreamMetric.sm) {
+                HStack(spacing: DreamMetric.sm) {
+                    Image(systemName: "text.quote")
+                        .foregroundStyle(Color.dreamPrimary)
+                    Text("Bio")
+                        .font(.dreamSectionHeader)
+                }
+
+                Text(bio)
+                    .font(.dreamBody(15))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(DreamMetric.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dreamCard()
         }
     }
 

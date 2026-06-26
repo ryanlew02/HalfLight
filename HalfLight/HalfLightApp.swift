@@ -7,9 +7,51 @@
 
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UIKit
+import UserNotifications
+
+/// Receives the APNs device token and forwards it to `PushService`, and presents
+/// pushes while the app is foregrounded.
+@MainActor
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        PushService.shared.updateToken(deviceToken)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        // Best-effort: no token this launch (e.g. simulator, no entitlement yet).
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound, .badge]
+    }
+}
+#endif
 
 @main
 struct HalfLightApp: App {
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
+
     init() {
         // Register any bundled custom faces (Instrument Serif / Space Grotesk /
         // JetBrains Mono). No-op until the TTFs are added to the target, at which
@@ -21,7 +63,7 @@ struct HalfLightApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: [Dream.self, DeletedDream.self, FeedPost.self, Follow.self, Comment.self])
+        .modelContainer(for: [Dream.self, DeletedDream.self, FeedPost.self, Follow.self, Comment.self, AppNotification.self])
     }
 }
 
@@ -91,6 +133,10 @@ private struct RootView: View {
         .onChange(of: auth.status) { previous, status in
             if status == .signedIn {
                 store?.reconcileFeed()
+                store?.reconcileNotifications()
+                // Register for APNs and upload this device's token so the
+                // push-notify function can reach the dreamer.
+                PushService.shared.start()
                 switch auth.lastEntry {
                 case .signedIn:
                     // Logging into an existing account: if there's guest data on this

@@ -42,6 +42,10 @@ struct FeedView: View {
     @State private var orderedIDs: [UUID] = []
     /// Posts whose impression has already been counted this session.
     @State private var impressed: Set<UUID> = []
+    /// Authors' profile photos fetched by @handle, keyed by lowercased username, so
+    /// other dreamers show real avatars instead of initials. Own posts already carry
+    /// a fresh snapshot; this fills in everyone else.
+    @State private var remoteAvatars: [String: Data] = [:]
 
     private var dreamsByID: [UUID: Dream] {
         Dictionary(dreams.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -74,6 +78,23 @@ struct FeedView: View {
     private func recordImpression(_ post: FeedPost) {
         guard impressed.insert(post.id).inserted else { return }
         store.recordView(post)
+    }
+
+    /// The photo to render for a post's author: the snapshot on the post (fresh for
+    /// your own posts) and, for everyone else, the avatar fetched by @handle.
+    private func photo(for post: FeedPost) -> Data? {
+        post.authorPhoto ?? remoteAvatars[post.authorUsername.lowercased()]
+    }
+
+    /// Fetch the avatars of authors we don't already have, keyed by @handle. Merges
+    /// so resolved photos persist as `reconcileFeed` streams more posts in.
+    private func loadFeedAvatars() async {
+        let usernames = Set(posts.map(\.authorUsername)).filter { !$0.isEmpty }
+        let missing = usernames.filter { remoteAvatars[$0.lowercased()] == nil }
+        guard !missing.isEmpty else { return }
+        let fetched = await auth.avatars(forUsernames: Array(missing))
+        guard !fetched.isEmpty else { return }
+        remoteAvatars.merge(fetched) { _, new in new }
     }
 
     var body: some View {
@@ -130,6 +151,9 @@ struct FeedView: View {
             // not on every like/impression — that would reshuffle under the user.
             .onChange(of: posts.count) { _, _ in refreshRanking() }
             .onChange(of: follows.count) { _, _ in refreshRanking() }
+            // Fetch authors' avatars on first appearance and whenever the post set
+            // grows (e.g. `reconcileFeed` syncing more dreamers' posts in).
+            .task(id: posts.count) { await loadFeedAvatars() }
             .onChange(of: profilePhoto) { _, _ in store.refreshFeedAuthors() }
             .onChange(of: userName) { _, _ in store.refreshFeedAuthors() }
             .onChange(of: userUsername) { _, _ in store.refreshFeedAuthors() }
@@ -147,6 +171,7 @@ struct FeedView: View {
                     FeedPostCard(
                         post: post,
                         dream: dreamsByID[post.dreamID],
+                        resolvedPhoto: photo(for: post),
                         onOpen: {
                             if let dream = dreamsByID[post.dreamID] {
                                 selectedRoute = FeedDreamRoute(
@@ -154,7 +179,7 @@ struct FeedView: View {
                                     author: FeedAuthor(
                                         username: post.authorUsername,
                                         name: post.authorName,
-                                        photo: post.authorPhoto
+                                        photo: photo(for: post)
                                     ),
                                     postedAt: post.createdAt
                                 )
@@ -164,7 +189,7 @@ struct FeedView: View {
                             selectedProfile = FeedAuthor(
                                 username: post.authorUsername,
                                 name: post.authorName,
-                                photo: post.authorPhoto
+                                photo: photo(for: post)
                             )
                         },
                         onToggleLike: { toggleLike(post) },

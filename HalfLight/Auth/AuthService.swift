@@ -80,6 +80,10 @@ protocol AuthBackend: Sendable {
     func updateAvatar(_ data: Data?) async throws
     /// The current user's profile photo, if one has been uploaded.
     func fetchAvatar() async -> Data?
+    /// Other dreamers' profile photos, keyed by lowercased username. Absent for
+    /// anyone who hasn't set a photo. Powers avatars on social surfaces (the feed
+    /// and comments) where only the author's @handle is known.
+    func fetchAvatars(usernames: [String]) async -> [String: Data]
     /// The completed Lucid Path lesson IDs stored on the account. `nil` when the
     /// server couldn't be reached, so a failed fetch never clobbers local progress.
     func fetchLucidProgress() async -> [String]?
@@ -248,6 +252,13 @@ final class AuthService {
     /// truth and a failed upload simply retries next time the photo changes.
     func updateAvatar(_ data: Data?) async {
         try? await backend.updateAvatar(data)
+    }
+
+    /// Other dreamers' profile photos for social surfaces, keyed by lowercased
+    /// username. Best-effort: anyone missing (no photo, or unreachable) is simply
+    /// absent and the caller falls back to initials.
+    func avatars(forUsernames usernames: [String]) async -> [String: Data] {
+        await backend.fetchAvatars(usernames: usernames)
     }
 
     // MARK: - Lucid Path progress (tied to the account, like dreams)
@@ -867,6 +878,14 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.data(forKey: "mockAvatar")
     }
 
+    func fetchAvatars(usernames: [String]) async -> [String: Data] {
+        // Single-device mock: only our own photo is known, keyed by our handle.
+        guard let data = UserDefaults.standard.data(forKey: "mockAvatar"),
+              let me = UserDefaults.standard.string(forKey: "userUsername")?.lowercased(),
+              usernames.contains(where: { $0.lowercased() == me }) else { return [:] }
+        return [me: data]
+    }
+
     func fetchLucidProgress() async -> [String]? {
         // The mock is always "reachable", so report an empty set (not nil) when
         // nothing has been stored yet.
@@ -1138,6 +1157,27 @@ final class SupabaseAuthBackend: AuthBackend {
             .value
         guard let encoded = rows?.first?.avatar else { return nil }
         return Data(base64Encoded: encoded)
+    }
+
+    func fetchAvatars(usernames: [String]) async -> [String: Data] {
+        guard SupabaseConfig.isConfigured, !usernames.isEmpty else { return [:] }
+        struct AvatarRow: Decodable { let username: String; let avatar: String? }
+        // RLS exposes the avatar column to any signed-in user and SELECT spans all
+        // rows, so a single `in` query pulls every author's photo at once.
+        let rows: [AvatarRow]? = try? await client
+            .from("profiles")
+            .select("username, avatar")
+            .in("username", values: usernames)
+            .execute()
+            .value
+        guard let rows else { return [:] }
+        var result: [String: Data] = [:]
+        for row in rows {
+            if let encoded = row.avatar, let data = Data(base64Encoded: encoded) {
+                result[row.username.lowercased()] = data
+            }
+        }
+        return result
     }
 
     func fetchLucidProgress() async -> [String]? {

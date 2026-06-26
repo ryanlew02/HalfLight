@@ -18,6 +18,8 @@ struct ProfileView: View {
     @Environment(AppRouter.self) private var router
     @Environment(DreamStore.self) private var store
     @Query private var dreams: [Dream]
+    @Query(filter: #Predicate<AppNotification> { !$0.isRead })
+    private var unreadNotificationItems: [AppNotification]
     @AppStorage("userName") private var userName = "Dreamer"
     @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
     @AppStorage("questBankedXP") private var questBankedXP = 0
@@ -56,7 +58,10 @@ struct ProfileView: View {
             .navigationDestination(isPresented: $showingProgress) {
                 StatsView()
             }
-            .onAppear { consumeProgressIntent() }
+            .onAppear {
+                consumeProgressIntent()
+                if auth.isSignedIn { store.reconcileNotifications() }
+            }
             .onChange(of: router.openProgress) { _, _ in consumeProgressIntent() }
             // Leaving the Profile tab resets its navigation, so coming back lands on
             // the root rather than whatever was pushed (Settings, Progress, a theme).
@@ -114,11 +119,19 @@ struct ProfileView: View {
             HStack(spacing: DreamMetric.lg) {
                 if auth.isSignedIn {
                     NavigationLink {
+                        NotificationsView()
+                    } label: {
+                        bellIcon
+                    }
+                    .accessibilityLabel("Activity")
+
+                    NavigationLink {
                         EditProfileView()
                     } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.title2)
                             .foregroundStyle(Color.dreamPrimary)
+                            .frame(width: 28, height: 28)
                     }
                     .accessibilityLabel("Edit profile")
                 }
@@ -129,10 +142,33 @@ struct ProfileView: View {
                     Image(systemName: "gearshape.fill")
                         .font(.title2)
                         .foregroundStyle(Color.dreamPrimary)
+                        .frame(width: 28, height: 28)
                 }
                 .accessibilityLabel("Settings")
             }
         }
+    }
+
+    /// Unread likes/comments on the dreamer's posts. Drives the bell's badge.
+    private var unreadNotifications: Int { unreadNotificationItems.count }
+
+    /// The bell, with an unread badge when there's new activity.
+    private var bellIcon: some View {
+        Image(systemName: "bell.fill")
+            .font(.title2)
+            .foregroundStyle(Color.dreamPrimary)
+            .frame(width: 28, height: 28)
+            .overlay(alignment: .topTrailing) {
+                if unreadNotifications > 0 {
+                    Text(unreadNotifications > 99 ? "99+" : "\(unreadNotifications)")
+                        .font(.dreamBody(10, .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.dreamAccent, in: .capsule)
+                        .offset(x: 9, y: -7)
+                }
+            }
     }
 
     // MARK: - Bio
@@ -142,13 +178,23 @@ struct ProfileView: View {
     @ViewBuilder
     private var bioCard: some View {
         if let bio = auth.bio, !bio.isEmpty {
-            Text(bio)
-                .font(.dreamBody(15))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(DreamMetric.lg)
-                .dreamCard()
+            VStack(alignment: .leading, spacing: DreamMetric.sm) {
+                HStack(spacing: DreamMetric.sm) {
+                    Image(systemName: "text.quote")
+                        .foregroundStyle(Color.dreamPrimary)
+                    Text("Bio")
+                        .font(.dreamSectionHeader)
+                }
+
+                Text(bio)
+                    .font(.dreamBody(15))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(DreamMetric.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dreamCard()
         }
     }
 
