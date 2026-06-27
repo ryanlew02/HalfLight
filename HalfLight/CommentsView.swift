@@ -34,6 +34,10 @@ struct CommentsView: View {
     @State private var remoteAvatars: [String: Data] = [:]
     /// The author whose profile is pushed when their photo / name / @handle is tapped.
     @State private var selectedProfile: FeedAuthor?
+    /// The comment the dreamer is reporting, driving the reason picker.
+    @State private var reportingComment: Comment?
+    /// Shows the "thanks for reporting" confirmation after a report is filed.
+    @State private var showReportThanks = false
 
     init(post: FeedPost) {
         self.post = post
@@ -67,6 +71,31 @@ struct CommentsView: View {
             }
             .navigationDestination(item: $selectedProfile) { author in
                 PublicProfileView(author: author)
+            }
+            .confirmationDialog(
+                "Report this comment?",
+                isPresented: Binding(
+                    get: { reportingComment != nil },
+                    set: { if !$0 { reportingComment = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: reportingComment
+            ) { comment in
+                ForEach(ReportReason.allCases) { reason in
+                    Button(reason.label) {
+                        store.reportComment(comment, reason: reason)
+                        SoundManager.shared.play(.tap)
+                        showReportThanks = true
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Tell us what's wrong. Our team will review this comment.")
+            }
+            .alert("Thanks for letting us know", isPresented: $showReportThanks) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("We'll review this comment and take action if it breaks our guidelines.")
             }
             .task {
                 refreshRanking()
@@ -184,6 +213,13 @@ struct CommentsView: View {
                     delete(comment)
                 } label: {
                     Label("Delete", systemImage: "trash")
+                }
+            } else {
+                Button {
+                    SoundManager.shared.play(.tap)
+                    reportingComment = comment
+                } label: {
+                    Label("Report Comment", systemImage: "flag")
                 }
             }
         }

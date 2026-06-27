@@ -1022,6 +1022,21 @@ final class SupabaseAuthBackend: AuthBackend {
         return rows.isEmpty
     }
 
+    /// Map a failed `profiles` insert to a meaningful error. Only a genuine
+    /// unique-constraint violation (Postgres 23505) means the username is taken;
+    /// every other failure — a row-level-security rejection (e.g. no session
+    /// because email confirmation is on), a network blip — is surfaced as-is so a
+    /// real problem isn't hidden behind a misleading "username was just taken".
+    private func profileInsertError(_ error: Error, username: String) -> AuthError {
+        if let pg = error as? PostgrestError {
+            if pg.code == "23505" {
+                return .message("“\(username)” was just taken. Try another username.")
+            }
+            return .message(pg.message)
+        }
+        return .message(error.localizedDescription)
+    }
+
     func signUp(
         email: String,
         password: String,
@@ -1058,7 +1073,7 @@ final class SupabaseAuthBackend: AuthBackend {
                 ))
                 .execute()
         } catch {
-            throw AuthError.message("“\(username)” was just taken. Try another username.")
+            throw profileInsertError(error, username: username)
         }
         return response.user.email ?? email
     }
@@ -1088,7 +1103,7 @@ final class SupabaseAuthBackend: AuthBackend {
                 .insert(ProfileRow(id: userID, username: username, firstName: firstName, lastName: lastName))
                 .execute()
         } catch {
-            throw AuthError.message("“\(username)” was just taken. Try another username.")
+            throw profileInsertError(error, username: username)
         }
     }
 

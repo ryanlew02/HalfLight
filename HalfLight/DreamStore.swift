@@ -124,6 +124,9 @@ final class DreamStore {
         dream.aiThemes = themes
         dream.updatedAt = .now
         dream.needsUpload = true
+        // Push the fresh analysis onto the dream's feed post too (no-op if the
+        // dream isn't shared), so it appears on the card for other dreamers.
+        syncFeedPost(for: dream)
         save()
         pushRemote(dream)
     }
@@ -385,6 +388,11 @@ final class DreamStore {
             // Already shared — keep the snapshot in step with the dream's edits.
             post.title = dream.title
             post.dreamDescription = dream.entry
+            post.mood = dream.mood.rawValue
+            post.tags = dream.tags
+            post.aiCategory = dream.aiCategory
+            post.aiMeaning = dream.aiMeaning
+            post.aiThemes = dream.aiThemes
             publishRemote(post)
         } else {
             let author = currentAuthor()
@@ -394,7 +402,12 @@ final class DreamStore {
                 authorName: author.name,
                 authorPhoto: author.photo,
                 title: dream.title,
-                dreamDescription: dream.entry
+                dreamDescription: dream.entry,
+                mood: dream.mood.rawValue,
+                tags: dream.tags,
+                aiCategory: dream.aiCategory,
+                aiMeaning: dream.aiMeaning,
+                aiThemes: dream.aiThemes
             )
             context.insert(post)
             publishRemote(post)
@@ -510,6 +523,21 @@ final class DreamStore {
         Task { try? await feedSync.setCommentLike(commentID: id, liked: liked) }
     }
 
+    /// Report a feed post for review. There's nothing to mirror locally — the
+    /// report is a server-side write — so this is a no-op without a backend.
+    func reportPost(_ post: FeedPost, reason: ReportReason) {
+        guard let feedSync else { return }
+        let id = post.id, reason = reason.rawValue
+        Task { try? await feedSync.reportPost(postID: id, reason: reason) }
+    }
+
+    /// Report a comment for review. Server-side only, like `reportPost`.
+    func reportComment(_ comment: Comment, reason: ReportReason) {
+        guard let feedSync else { return }
+        let id = comment.id, reason = reason.rawValue
+        Task { try? await feedSync.reportComment(commentID: id, reason: reason) }
+    }
+
     /// Follow / unfollow a dreamer locally and remotely.
     func setFollow(username: String, following: Bool) {
         let descriptor = FetchDescriptor<Follow>(predicate: #Predicate<Follow> { $0.username == username })
@@ -534,12 +562,16 @@ final class DreamStore {
         let id = post.id, dreamID = post.dreamID
         let username = post.authorUsername, name = post.authorName
         let title = post.title, description = post.dreamDescription, created = post.createdAt
+        let mood = post.mood, tags = post.tags
+        let aiCategory = post.aiCategory, aiMeaning = post.aiMeaning, aiThemes = post.aiThemes
         Task {
             guard let uid = await feedSync.currentUserID() else { return }
             try? await feedSync.publish(FeedPostUpsert(
                 id: id, dreamID: dreamID, authorID: uid,
                 authorUsername: username, authorName: name,
-                title: title, dreamDescription: description, createdAt: created
+                title: title, dreamDescription: description, createdAt: created,
+                mood: mood, tags: tags,
+                aiCategory: aiCategory, aiMeaning: aiMeaning, aiThemes: aiThemes
             ))
         }
     }
@@ -556,9 +588,13 @@ final class DreamStore {
     func reconcileFeed() {
         guard let feedSync else { return }
         Task {
-            async let remotePosts = (try? await feedSync.fetchFeed(limit: 200)) ?? []
-            async let likedIDs = (try? await feedSync.likedPostIDs()) ?? []
-            async let followed = (try? await feedSync.followedUsernames()) ?? []
+            // A *failed* fetch must not be treated as "the feed is empty" — that
+            // would make mergeFeed delete every other dreamer's cached post and
+            // wipe the local follow set. Only merge when the fetch succeeds; a
+            // genuinely empty feed still returns [] and reconciles normally.
+            guard let remotePosts = try? await feedSync.fetchFeed(limit: 200) else { return }
+            let likedIDs = (try? await feedSync.likedPostIDs()) ?? []
+            let followed = (try? await feedSync.followedUsernames()) ?? []
             await mergeFeed(remote: remotePosts, liked: Set(likedIDs), followed: followed)
         }
     }
@@ -578,6 +614,11 @@ final class DreamStore {
                 post.viewCount = record.viewCount
                 post.commentCount = record.commentCount
                 post.isLiked = liked.contains(record.id)
+                post.mood = record.mood
+                post.tags = record.tags ?? []
+                post.aiCategory = record.aiCategory
+                post.aiMeaning = record.aiMeaning
+                post.aiThemes = record.aiThemes ?? []
             } else {
                 let post = FeedPost(
                     id: record.id,
@@ -590,7 +631,12 @@ final class DreamStore {
                     likeCount: record.likeCount,
                     isLiked: liked.contains(record.id),
                     commentCount: record.commentCount,
-                    viewCount: record.viewCount
+                    viewCount: record.viewCount,
+                    mood: record.mood,
+                    tags: record.tags ?? [],
+                    aiCategory: record.aiCategory,
+                    aiMeaning: record.aiMeaning,
+                    aiThemes: record.aiThemes ?? []
                 )
                 context.insert(post)
                 localByID[record.id] = post

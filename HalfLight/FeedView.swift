@@ -36,6 +36,10 @@ struct FeedView: View {
     @State private var selectedProfile: FeedAuthor?
     /// The post whose comments are open in a sheet.
     @State private var commentsPost: FeedPost?
+    /// The post the dreamer is reporting, driving the reason picker.
+    @State private var reportingPost: FeedPost?
+    /// Shows the "thanks for reporting" confirmation after a report is filed.
+    @State private var showReportThanks = false
     /// The ranked order, captured as ids so the feed doesn't reshuffle mid-scroll
     /// when a like or impression lands; recomputed when the post set changes or the
     /// feed reappears. The view always renders live posts in this order.
@@ -138,6 +142,31 @@ struct FeedView: View {
             .sheet(isPresented: $showAuth) {
                 AuthView()
             }
+            .confirmationDialog(
+                "Report this dream?",
+                isPresented: Binding(
+                    get: { reportingPost != nil },
+                    set: { if !$0 { reportingPost = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: reportingPost
+            ) { post in
+                ForEach(ReportReason.allCases) { reason in
+                    Button(reason.label) {
+                        store.reportPost(post, reason: reason)
+                        SoundManager.shared.play(.tap)
+                        showReportThanks = true
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Tell us what's wrong. Our team will review this dream.")
+            }
+            .alert("Thanks for letting us know", isPresented: $showReportThanks) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("We'll review this dream and take action if it breaks our guidelines.")
+            }
             // The feed stays alive across tab switches (it isn't rebuilt), so refresh
             // whenever the Feed tab becomes active — `initial: true` covers the first
             // time it's opened.
@@ -194,6 +223,7 @@ struct FeedView: View {
                         },
                         onToggleLike: { toggleLike(post) },
                         onComment: { commentsPost = post },
+                        onReport: { reportingPost = post },
                         onImpression: { recordImpression(post) }
                     )
                     .padding(.horizontal, DreamMetric.screen)

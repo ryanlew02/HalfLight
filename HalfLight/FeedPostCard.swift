@@ -28,6 +28,8 @@ struct FeedPostCard: View {
     var onToggleLike: () -> Void = {}
     /// Open the comments for this post. A no-op until comments are built out.
     var onComment: () -> Void = {}
+    /// Report this dream. Fired from the card's long-press context menu.
+    var onReport: () -> Void = {}
     /// Record that this card was shown (one impression). Drives the conversion rate.
     var onImpression: () -> Void = {}
 
@@ -36,8 +38,8 @@ struct FeedPostCard: View {
             authorRow
 
             VStack(alignment: .leading, spacing: DreamMetric.md) {
-                if let dream {
-                    feelingRow(dream)
+                if let mood = displayMood {
+                    feelingRow(mood: mood, tags: displayTags)
                         // Drop the feeling row below the mood orb in the corner.
                         .padding(.top, DreamMetric.sm)
                 }
@@ -46,7 +48,7 @@ struct FeedPostCard: View {
                     .font(.dreamDisplay(28))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Keep the title clear of the mood orb in the top corner.
-                    .padding(.trailing, dream == nil ? 0 : 64)
+                    .padding(.trailing, displayMood == nil ? 0 : 64)
 
                 Text(post.dreamDescription)
                     .font(.dreamBodyText)
@@ -79,6 +81,14 @@ struct FeedPostCard: View {
         .overlay(alignment: .topTrailing) { moodOrb }
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
+        .contextMenu {
+            Button {
+                SoundManager.shared.play(.tap)
+                onReport()
+            } label: {
+                Label("Report Dream", systemImage: "flag")
+            }
+        }
         .onAppear(perform: onImpression)
     }
 
@@ -86,13 +96,26 @@ struct FeedPostCard: View {
 
     /// The mood ("feeling") followed by the dreamer's own tags, on one scrolling
     /// line. AI themes (when present) live lower down in their own row.
-    private func feelingRow(_ dream: Dream) -> some View {
+    /// The mood to render: the live local dream's, or the post's snapshot so
+    /// other dreamers see the feeling label, tag tint, and corner orb too.
+    private var displayMood: Dream.Mood? {
+        if let mood = dream?.mood { return mood }
+        if let raw = post.mood { return Dream.Mood(rawValue: raw) }
+        return nil
+    }
+
+    /// The dreamer's own tags: live from the local dream, else the post snapshot.
+    private var displayTags: [String] {
+        dream?.tags ?? post.tags
+    }
+
+    private func feelingRow(mood: Dream.Mood, tags: [String]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DreamMetric.sm) {
-                moodLabel(dream.mood)
+                moodLabel(mood)
 
-                ForEach(dream.tags, id: \.self) { tag in
-                    tagChip(tag, tint: dream.mood.tint)
+                ForEach(tags, id: \.self) { tag in
+                    tagChip(tag, tint: mood.tint)
                 }
             }
             // Stay clear of the mood orb in the top corner.
@@ -113,7 +136,7 @@ struct FeedPostCard: View {
     /// so it never intercepts the card's tap.
     @ViewBuilder
     private var moodOrb: some View {
-        if let mood = dream?.mood {
+        if let mood = displayMood {
             MoodOrb(tint: mood.tint, diameter: 56)
                 .padding(.top, DreamMetric.md)
                 .padding(.trailing, DreamMetric.md)
@@ -123,17 +146,23 @@ struct FeedPostCard: View {
 
     // MARK: - AI insight
 
-    /// Whether the source dream has a completed AI analysis.
+    /// Whether there's a completed AI analysis to show — from the local dream
+    /// (the author's own card) or, failing that, the snapshot on the post (so
+    /// other dreamers see it too).
     private var isAnalyzed: Bool {
-        dream?.aiCategory != nil && dream?.aiMeaning != nil
+        aiInsight != nil
     }
 
-    /// The AI category + meaning, present only once the dream has been analyzed.
+    /// The AI category + meaning. Prefers the live local dream, then the post's
+    /// snapshot, so the insight shows even when the source dream isn't on-device.
     private var aiInsight: (category: String, meaning: String)? {
-        guard let dream, let category = dream.aiCategory, let meaning = dream.aiMeaning else {
-            return nil
+        if let category = dream?.aiCategory, let meaning = dream?.aiMeaning {
+            return (category, meaning)
         }
-        return (category, meaning)
+        if let category = post.aiCategory, let meaning = post.aiMeaning {
+            return (category, meaning)
+        }
+        return nil
     }
 
     private func aiInsightView(_ insight: (category: String, meaning: String)) -> some View {
@@ -168,7 +197,9 @@ struct FeedPostCard: View {
     /// The AI-surfaced themes, shown only once the dream has been analyzed. (The
     /// dreamer's own tags sit next to the feeling instead — see `feelingRow`.)
     private var aiThemeChips: [String] {
-        guard isAnalyzed, let themes = dream?.aiThemes, !themes.isEmpty else { return [] }
+        let fromDream = dream?.aiThemes ?? []
+        let themes = fromDream.isEmpty ? post.aiThemes : fromDream
+        guard isAnalyzed, !themes.isEmpty else { return [] }
         return themes.map(\.capitalized)
     }
 

@@ -33,9 +33,17 @@ struct FeedPostRecord: Codable, Sendable {
     var likeCount: Int
     var viewCount: Int
     var commentCount: Int
+    var mood: String?
+    // Optional so a missing column (older row / migration not yet applied) decodes
+    // to nil instead of throwing — a decode failure here would fail the whole feed
+    // fetch. Coalesced to [] at the use sites.
+    var tags: [String]?
+    var aiCategory: String?
+    var aiMeaning: String?
+    var aiThemes: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, title
+        case id, title, mood, tags
         case dreamID = "dream_id"
         case authorID = "author_id"
         case authorUsername = "author_username"
@@ -45,6 +53,9 @@ struct FeedPostRecord: Codable, Sendable {
         case likeCount = "like_count"
         case viewCount = "view_count"
         case commentCount = "comment_count"
+        case aiCategory = "ai_category"
+        case aiMeaning = "ai_meaning"
+        case aiThemes = "ai_themes"
     }
 }
 
@@ -60,15 +71,23 @@ struct FeedPostUpsert: Codable, Sendable {
     var title: String
     var dreamDescription: String
     var createdAt: Date
+    var mood: String?
+    var tags: [String]
+    var aiCategory: String?
+    var aiMeaning: String?
+    var aiThemes: [String]
 
     enum CodingKeys: String, CodingKey {
-        case id, title
+        case id, title, mood, tags
         case dreamID = "dream_id"
         case authorID = "author_id"
         case authorUsername = "author_username"
         case authorName = "author_name"
         case dreamDescription = "dream_description"
         case createdAt = "created_at"
+        case aiCategory = "ai_category"
+        case aiMeaning = "ai_meaning"
+        case aiThemes = "ai_themes"
     }
 }
 
@@ -148,6 +167,10 @@ protocol FeedSyncing: Sendable {
     // Notifications
     func fetchNotifications(limit: Int) async throws -> [FeedNotificationRecord]
     func markAllNotificationsRead() async throws
+
+    // Reports
+    func reportPost(postID: UUID, reason: String) async throws
+    func reportComment(commentID: UUID, reason: String) async throws
 }
 
 #if canImport(Supabase)
@@ -178,6 +201,8 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
     func fetchFeed(limit: Int) async throws -> [FeedPostRecord] {
         try await client.from("feed_posts")
             .select()
+            // Drop anything a moderator has hidden via the admin dashboard.
+            .eq("hidden", value: false)
             .order("created_at", ascending: false)
             .limit(limit)
             .execute()
@@ -225,6 +250,8 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
         try await client.from("feed_comments")
             .select()
             .eq("post_id", value: postID.uuidString)
+            // Drop anything a moderator has hidden via the admin dashboard.
+            .eq("hidden", value: false)
             .order("created_at", ascending: true)
             .execute()
             .value
@@ -317,7 +344,40 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
             .execute()
     }
 
+    // MARK: Reports
+
+    func reportPost(postID: UUID, reason: String) async throws {
+        guard let uid = await currentUserID() else { return }
+        // onConflict matches the (reporter, post, comment) unique key so a repeat
+        // report updates the reason instead of erroring.
+        try await client.from("feed_reports")
+            .upsert(ReportRow(reporterID: uid, postID: postID, reason: reason),
+                    onConflict: "reporter_id,post_id,comment_id")
+            .execute()
+    }
+
+    func reportComment(commentID: UUID, reason: String) async throws {
+        guard let uid = await currentUserID() else { return }
+        try await client.from("feed_reports")
+            .upsert(ReportRow(reporterID: uid, commentID: commentID, reason: reason),
+                    onConflict: "reporter_id,post_id,comment_id")
+            .execute()
+    }
+
     // MARK: Small row shapes
+
+    private struct ReportRow: Codable {
+        let reporterID: UUID
+        var postID: UUID? = nil
+        var commentID: UUID? = nil
+        let reason: String
+        enum CodingKeys: String, CodingKey {
+            case reporterID = "reporter_id"
+            case postID = "post_id"
+            case commentID = "comment_id"
+            case reason
+        }
+    }
 
     private struct ReadUpdate: Codable {
         let readAt: Date

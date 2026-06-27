@@ -319,7 +319,7 @@ struct ProfileView: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Change profile photo")
+        .accessibilityLabel(Text("Profile photo"))
         .contextMenu {
             if let data = profilePhotoData {
                 Button {

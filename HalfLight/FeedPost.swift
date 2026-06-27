@@ -37,6 +37,23 @@ final class FeedPost {
     var dreamDescription: String
     var createdAt: Date
 
+    // MARK: Mood + tags (snapshot, so other dreamers see them on the card)
+
+    /// The dream's mood, stored as its raw value and rebuilt into `Dream.Mood`
+    /// for the feeling label, the tag tint, and the corner mood orb.
+    var mood: String?
+    /// The dreamer's own tags, copied at share time.
+    var tags: [String] = []
+
+    // MARK: AI analysis (snapshot of the dream's interpretation)
+
+    /// The AI category / meaning / themes, copied from the source dream so other
+    /// dreamers — who don't have that dream locally — still see the analysis on
+    /// the card. `nil` / empty until the dream has been analyzed.
+    var aiCategory: String?
+    var aiMeaning: String?
+    var aiThemes: [String] = []
+
     // MARK: Engagement (local for now; a real backend will own the counts)
 
     var likeCount: Int
@@ -60,7 +77,12 @@ final class FeedPost {
         likeCount: Int = 0,
         isLiked: Bool = false,
         commentCount: Int = 0,
-        viewCount: Int = 0
+        viewCount: Int = 0,
+        mood: String? = nil,
+        tags: [String] = [],
+        aiCategory: String? = nil,
+        aiMeaning: String? = nil,
+        aiThemes: [String] = []
     ) {
         self.id = id
         self.dreamID = dreamID
@@ -74,5 +96,10 @@ final class FeedPost {
         self.isLiked = isLiked
         self.commentCount = commentCount
         self.viewCount = viewCount
+        self.mood = mood
+        self.tags = tags
+        self.aiCategory = aiCategory
+        self.aiMeaning = aiMeaning
+        self.aiThemes = aiThemes
     }
 }
