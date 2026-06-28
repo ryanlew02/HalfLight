@@ -9,7 +9,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 /// Daily per-user AI request allowance.
-const DAILY_LIMIT = 8;
+const DAILY_LIMIT = 12;
 
 export interface Guarded {
   ok: boolean;

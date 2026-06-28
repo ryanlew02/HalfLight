@@ -89,6 +89,7 @@ struct DreamJournalView: View {
             }
             .background { DreamBackground() }
             .toolbar(.hidden, for: .navigationBar)
+            .keyboardDoneToolbar()
             // Keep the semantic index in step with the library (adds/edits/deletes).
             .task(id: dreamsSignature) {
                 semanticIndex.prune(keeping: dreams)

@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
     }
     return json({ status: entitlement.status, expiresAt: entitlement.expiresMs }, 200);
   } catch (err) {
+    // Keep the full reason in the server logs, but don't leak internals to the app.
     console.error("sync-subscription verify failed:", err);
     return json({ error: "Could not verify the purchase." }, 400);
   }

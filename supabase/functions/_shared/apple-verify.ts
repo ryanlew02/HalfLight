@@ -1,27 +1,34 @@
 // apple-verify — shared App Store verification + entitlement persistence.
 //
 // Verifies Apple's signed JWS payloads (a single transaction submitted by the app,
-// or a Server Notification V2 from Apple) against Apple's root certificates, then
-// maps the result to a row in `public.subscriptions`. Used by:
+// or a Server Notification V2 from Apple) and maps the result to a row in
+// `public.subscriptions`. Used by:
 //   • sync-subscription        — app posts its verified transaction after purchase
 //   • app-store-notifications  — Apple posts renewals / expirations / refunds
 //
+// Verification is done with Web Crypto (jose + @peculiar/x509) rather than
+// @apple/app-store-server-library, because that library depends on Node's
+// `crypto.X509Certificate` internals which the Supabase (Deno) Edge Runtime does
+// not implement. For each JWS we:
+//   1. take the x5c certificate chain from the JWS header,
+//   2. confirm the chain terminates at a pinned Apple root certificate,
+//   3. confirm each certificate is in date and signed by the next one up,
+//   4. verify the JWS signature with the leaf certificate's public key,
+//   5. confirm the decoded payload is for our bundle id.
+//
 // Config (Supabase secrets):
-//   APPLE_BUNDLE_ID        e.g. LanternHours.HalfLight
-//   APP_STORE_ENVIRONMENT  which environment to try FIRST: "Production" (release,
-//                          default) or "Sandbox". Verification automatically falls
-//                          back to the other environment on a mismatch, so a single
-//                          deployment serves both real customers (Production) and
-//                          Apple's App Review reviewers (who purchase in Sandbox).
+//   APPLE_BUNDLE_ID        e.g. LanternHours.HalfLight (defaults to it)
+//   APP_STORE_ENVIRONMENT  only used as a fallback label; the real environment
+//                          comes from each verified payload.
 //
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
-import { Buffer } from "node:buffer";
-import {
-  Environment,
-  SignedDataVerifier,
-} from "npm:@apple/app-store-server-library@1";
+import * as jose from "npm:jose@5";
+import * as x509 from "npm:@peculiar/x509@1";
 import { createClient } from "npm:@supabase/supabase-js@2";
+
+// @peculiar/x509 needs a Web Crypto provider; Deno's global `crypto` is one.
+x509.cryptoProvider.set(crypto);
 
 /// The normalized entitlement we persist, independent of which Apple payload it came from.
 export interface Entitlement {
@@ -37,88 +44,103 @@ export interface Entitlement {
 }
 
 const BUNDLE_ID = Deno.env.get("APPLE_BUNDLE_ID") ?? "LanternHours.HalfLight";
+const DEFAULT_ENV = Deno.env.get("APP_STORE_ENVIRONMENT") ?? "Production";
 
-// The environment to attempt first. Real customers are Production, so that's the
-// default; we always fall back to the other environment on a mismatch (see
-// `verifyWithFallback`), which is what lets Apple's reviewers — who buy in
-// Sandbox during App Review — pass verification without a manual toggle.
-const PRIMARY_ENV = (Deno.env.get("APP_STORE_ENVIRONMENT") ?? "Production") === "Sandbox"
-  ? Environment.SANDBOX
-  : Environment.PRODUCTION;
-const FALLBACK_ENV = PRIMARY_ENV === Environment.PRODUCTION
-  ? Environment.SANDBOX
-  : Environment.PRODUCTION;
-
-// Apple's public root certificates, fetched once per cold start. The signing
-// chain for App Store payloads roots in AppleRootCA-G3; the others are included
-// so the verifier accepts older chains too.
+// Apple's public root certificates (DER), fetched once per cold start. App Store
+// payloads chain up to AppleRootCA-G3; G2 is included for older chains.
 const APPLE_ROOT_URLS = [
   "https://www.apple.com/certificateauthority/AppleRootCA-G3.cer",
   "https://www.apple.com/certificateauthority/AppleRootCA-G2.cer",
 ];
 
-let rootsPromise: Promise<Buffer[]> | null = null;
-function getRoots(): Promise<Buffer[]> {
-  if (!rootsPromise) {
-    rootsPromise = Promise.all(
+let appleRootsPromise: Promise<x509.X509Certificate[]> | null = null;
+function getAppleRoots(): Promise<x509.X509Certificate[]> {
+  if (!appleRootsPromise) {
+    appleRootsPromise = Promise.all(
       APPLE_ROOT_URLS.map(async (url) => {
         const res = await fetch(url);
-        return Buffer.from(await res.arrayBuffer());
+        return new x509.X509Certificate(new Uint8Array(await res.arrayBuffer()));
       }),
-    );
+    ).catch((err) => {
+      appleRootsPromise = null; // don't cache a transient fetch failure
+      throw err;
+    });
   }
-  return rootsPromise;
+  return appleRootsPromise;
 }
 
-// One verifier per environment, memoized. A verifier validates the signature +
-// chain + bundle id and that the payload's environment matches its own, so we
-// keep both on hand and pick the one the payload was actually signed in.
-const verifiers = new Map<Environment, Promise<SignedDataVerifier>>();
-function getVerifier(env: Environment): Promise<SignedDataVerifier> {
-  let p = verifiers.get(env);
-  if (!p) {
-    p = (async () => {
-      const roots = await getRoots();
-      // enableOnlineChecks=false: skip OCSP (no outbound cert-revocation calls);
-      // signature + chain + bundle/environment checks still run.
-      return new SignedDataVerifier(roots, false, env, BUNDLE_ID);
-    })();
-    verifiers.set(env, p);
-  }
-  return p;
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
 }
 
-// Run a verify operation against the primary environment and, if that fails,
-// retry against the other. This makes one deployment accept both Production
-// (real customers) and Sandbox (App Review reviewers + our own sandbox testing)
-// payloads. The original error is surfaced if a payload is invalid in BOTH
-// environments, so genuinely bad signatures still fail closed.
-async function verifyWithFallback<T>(
-  op: (verifier: SignedDataVerifier) => Promise<T>,
-): Promise<T> {
-  try {
-    return await op(await getVerifier(PRIMARY_ENV));
-  } catch (primaryError) {
-    try {
-      return await op(await getVerifier(FALLBACK_ENV));
-    } catch {
-      throw primaryError;
+/// SHA-256 hex of a certificate's DER, used to pin against Apple's known roots.
+async function thumbprint(cert: x509.X509Certificate): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", cert.rawData);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/// Verify an Apple-signed JWS (with an x5c chain) and return its decoded payload.
+/// Throws if the chain isn't anchored at a pinned Apple root, a certificate is
+/// out of date or improperly signed, or the JWS signature doesn't check out.
+async function verifyAppleJWS<T = Record<string, unknown>>(jws: string): Promise<T> {
+  const header = jose.decodeProtectedHeader(jws);
+  const x5c = header.x5c;
+  if (!Array.isArray(x5c) || x5c.length === 0) {
+    throw new Error("JWS is missing its x5c certificate chain");
+  }
+
+  const chain = x5c.map((b64) => new x509.X509Certificate(base64ToBytes(b64)));
+
+  // 1. The chain's root must be one of Apple's pinned roots (compared by SHA-256).
+  const appleRoots = await getAppleRoots();
+  const trusted = new Set(await Promise.all(appleRoots.map(thumbprint)));
+  const presentedRoot = chain[chain.length - 1];
+  if (!trusted.has(await thumbprint(presentedRoot))) {
+    throw new Error("certificate chain does not terminate at a trusted Apple root");
+  }
+
+  // 2. Every certificate must be in date and signed by the next one up (the root
+  //    is self-signed).
+  const now = new Date();
+  for (let i = 0; i < chain.length; i++) {
+    const cert = chain[i];
+    if (now < cert.notBefore || now > cert.notAfter) {
+      throw new Error("a certificate in the chain is expired or not yet valid");
     }
+    const issuer = chain[i + 1] ?? presentedRoot;
+    const issuerKey = await issuer.publicKey.export();
+    const ok = await cert.verify({ publicKey: issuerKey, signatureOnly: true });
+    if (!ok) throw new Error("certificate chain signature is invalid");
   }
+
+  // 3. Verify the JWS signature itself with the leaf certificate's public key.
+  const leafKey = await jose.importX509(chain[0].toString("pem"), "ES256");
+  const { payload } = await jose.compactVerify(jws, leafKey);
+  return JSON.parse(new TextDecoder().decode(payload)) as T;
+}
+
+/// Reject a payload that isn't for our app.
+function assertBundle(bundleId: unknown): void {
+  if (bundleId !== BUNDLE_ID) {
+    throw new Error(`payload bundle id (${String(bundleId)}) does not match ${BUNDLE_ID}`);
+  }
+}
+
+interface DecodedTransaction {
+  bundleId?: string;
+  originalTransactionId?: string;
+  productId?: string;
+  expiresDate?: number;
+  appAccountToken?: string;
+  environment?: string;
+  revocationDate?: number;
 }
 
 /// Map a decoded transaction (+ optional notification type) to an Entitlement.
-function toEntitlement(
-  txn: {
-    originalTransactionId?: string;
-    productId?: string;
-    expiresDate?: number;
-    appAccountToken?: string;
-    environment?: string;
-    revocationDate?: number;
-  },
-  notificationType?: string,
-): Entitlement {
+function toEntitlement(txn: DecodedTransaction, notificationType?: string): Entitlement {
   const expiresMs = txn.expiresDate ?? null;
   let status: string;
   if (notificationType === "REFUND" || txn.revocationDate) {
@@ -137,29 +159,32 @@ function toEntitlement(
     productId: txn.productId ?? "",
     expiresMs,
     appAccountToken: txn.appAccountToken,
-    environment: txn.environment ?? (PRIMARY_ENV === Environment.SANDBOX ? "Sandbox" : "Production"),
+    environment: txn.environment ?? DEFAULT_ENV,
     status,
   };
 }
 
 /// Verify a single signed transaction JWS (from the app) into an Entitlement.
 export async function verifyTransactionJWS(jws: string): Promise<Entitlement> {
-  return verifyWithFallback(async (verifier) => {
-    const txn = await verifier.verifyAndDecodeTransaction(jws);
-    return toEntitlement(txn);
-  });
+  const txn = await verifyAppleJWS<DecodedTransaction>(jws);
+  assertBundle(txn.bundleId);
+  return toEntitlement(txn);
 }
 
 /// Verify an App Store Server Notification V2 payload into an Entitlement (or null
 /// when it carries no transaction, e.g. a test notification).
 export async function verifyNotification(signedPayload: string): Promise<Entitlement | null> {
-  return verifyWithFallback(async (verifier) => {
-    const payload = await verifier.verifyAndDecodeNotification(signedPayload);
-    const signedTxn = payload.data?.signedTransactionInfo;
-    if (!signedTxn) return null;
-    const txn = await verifier.verifyAndDecodeTransaction(signedTxn);
-    return toEntitlement(txn, payload.notificationType);
-  });
+  const notification = await verifyAppleJWS<{
+    notificationType?: string;
+    data?: { signedTransactionInfo?: string };
+  }>(signedPayload);
+
+  const signedTxn = notification.data?.signedTransactionInfo;
+  if (!signedTxn) return null;
+
+  const txn = await verifyAppleJWS<DecodedTransaction>(signedTxn);
+  assertBundle(txn.bundleId);
+  return toEntitlement(txn, notification.notificationType);
 }
 
 /// Service-role Supabase client (writes the RLS-protected subscriptions table).
@@ -177,6 +202,20 @@ export async function upsertEntitlement(
   userId: string,
   e: Entitlement,
 ) {
+  // One Apple subscription (keyed by originalTransactionId) can end up recorded
+  // under a different app account than the one now signed in — e.g. the same
+  // Apple ID was used across multiple HalfLight accounts. The unique index on
+  // original_transaction_id would otherwise make the user_id-keyed upsert below
+  // fail and silently leave this account with no entitlement, so first release
+  // any other account's claim on this transaction.
+  if (e.originalTransactionId) {
+    await admin
+      .from("subscriptions")
+      .delete()
+      .eq("original_transaction_id", e.originalTransactionId)
+      .neq("user_id", userId);
+  }
+
   const { error } = await admin.from("subscriptions").upsert({
     user_id: userId,
     original_transaction_id: e.originalTransactionId,

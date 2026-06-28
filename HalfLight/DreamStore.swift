@@ -61,6 +61,11 @@ final class DreamStore {
     private(set) var skippedDays: Set<Date> = DayLog.skipped.days()
     private(set) var creditedDays: Set<Date> = DayLog.journalCredit.days()
 
+    /// Set when a feed write (publishing, commenting, reporting) is rejected for
+    /// hitting its per-day cap. The views observe this and show an alert, then
+    /// clear it. `nil` when there's nothing to surface.
+    var rateLimitNotice: String?
+
     init(context: ModelContext, sync: DreamSyncing? = nil, feedSync: FeedSyncing? = nil) {
         self.context = context
         self.sync = sync
@@ -509,13 +514,26 @@ final class DreamStore {
         if let feedSync {
             let id = comment.id, postID = post.id, text = comment.text
             let username = author.username, name = author.name
-            Task {
+            Task { @MainActor in
                 guard let uid = await feedSync.currentUserID() else { return }
-                try? await feedSync.addComment(FeedCommentRecord(
-                    id: id, postID: postID, authorID: uid,
-                    authorUsername: username, authorName: name,
-                    text: text, createdAt: .now
-                ))
+                do {
+                    try await feedSync.addComment(FeedCommentRecord(
+                        id: id, postID: postID, authorID: uid,
+                        authorUsername: username, authorName: name,
+                        text: text, createdAt: .now
+                    ))
+                } catch FeedSyncError.rateLimited {
+                    // Over the daily comment cap — undo the optimistic local insert
+                    // so the journal matches the server, and tell the dreamer.
+                    context.delete(comment)
+                    post.commentCount = max(0, post.commentCount - 1)
+                    save()
+                    rateLimitNotice = String(
+                        localized: "You can write up to 20 comments a day. Try again tomorrow."
+                    )
+                } catch {
+                    // Other failures stay best-effort, as before.
+                }
             }
         }
         return comment
@@ -545,14 +563,28 @@ final class DreamStore {
     func reportPost(_ post: FeedPost, reason: ReportReason) {
         guard let feedSync else { return }
         let id = post.id, reason = reason.rawValue
-        Task { try? await feedSync.reportPost(postID: id, reason: reason) }
+        Task { @MainActor in
+            do { try await feedSync.reportPost(postID: id, reason: reason) }
+            catch FeedSyncError.rateLimited { noteReportLimit() }
+            catch { }
+        }
     }
 
     /// Report a comment for review. Server-side only, like `reportPost`.
     func reportComment(_ comment: Comment, reason: ReportReason) {
         guard let feedSync else { return }
         let id = comment.id, reason = reason.rawValue
-        Task { try? await feedSync.reportComment(commentID: id, reason: reason) }
+        Task { @MainActor in
+            do { try await feedSync.reportComment(commentID: id, reason: reason) }
+            catch FeedSyncError.rateLimited { noteReportLimit() }
+            catch { }
+        }
+    }
+
+    private func noteReportLimit() {
+        rateLimitNotice = String(
+            localized: "You can report up to 5 posts a day. Try again tomorrow."
+        )
     }
 
     /// Follow / unfollow a dreamer locally and remotely.
@@ -566,10 +598,33 @@ final class DreamStore {
         }
         save()
         guard let feedSync else { return }
-        Task {
-            if following { try? await feedSync.follow(username: username) }
-            else { try? await feedSync.unfollow(username: username) }
+        Task { @MainActor in
+            if following {
+                do {
+                    try await feedSync.follow(username: username)
+                } catch FeedSyncError.rateLimited {
+                    // Over the daily follow cap — undo the optimistic local follow
+                    // so it matches the server, and tell the dreamer.
+                    unfollowLocally(username: username)
+                    rateLimitNotice = String(
+                        localized: "You can follow up to 50 accounts a day. Try again tomorrow."
+                    )
+                } catch {
+                    // Other failures stay best-effort, as before.
+                }
+            } else {
+                try? await feedSync.unfollow(username: username)
+            }
         }
+    }
+
+    /// Undo a local follow when the server refused it (daily cap reached).
+    private func unfollowLocally(username: String) {
+        let descriptor = FetchDescriptor<Follow>(predicate: #Predicate<Follow> { $0.username == username })
+        for follow in (try? context.fetch(descriptor)) ?? [] {
+            context.delete(follow)
+        }
+        save()
     }
 
     // MARK: - Feed remote push / reconcile
@@ -581,16 +636,43 @@ final class DreamStore {
         let title = post.title, description = post.dreamDescription, created = post.createdAt
         let mood = post.mood, tags = post.tags
         let aiCategory = post.aiCategory, aiMeaning = post.aiMeaning, aiThemes = post.aiThemes
-        Task {
+        Task { @MainActor in
             guard let uid = await feedSync.currentUserID() else { return }
-            try? await feedSync.publish(FeedPostUpsert(
-                id: id, dreamID: dreamID, authorID: uid,
-                authorUsername: username, authorName: name,
-                title: title, dreamDescription: description, createdAt: created,
-                mood: mood, tags: tags,
-                aiCategory: aiCategory, aiMeaning: aiMeaning, aiThemes: aiThemes
-            ))
+            do {
+                try await feedSync.publish(FeedPostUpsert(
+                    id: id, dreamID: dreamID, authorID: uid,
+                    authorUsername: username, authorName: name,
+                    title: title, dreamDescription: description, createdAt: created,
+                    mood: mood, tags: tags,
+                    aiCategory: aiCategory, aiMeaning: aiMeaning, aiThemes: aiThemes
+                ))
+            } catch FeedSyncError.rateLimited {
+                // Over the daily publish cap. Only brand-new posts trip the trigger
+                // (edits re-push an existing id), so unshare the dream locally to
+                // match the server and tell the dreamer.
+                unshareLocally(dreamID: dreamID)
+                rateLimitNotice = String(
+                    localized: "You can publish up to 3 dreams a day. Try again tomorrow."
+                )
+            } catch {
+                // Other failures stay best-effort, as before.
+            }
         }
+    }
+
+    /// Undo a local "share to feed" when the server refused the publish: drop the
+    /// local FeedPost and flip the dream back to private so its visibility matches
+    /// what actually reached the feed.
+    private func unshareLocally(dreamID: UUID) {
+        let postDescriptor = FetchDescriptor<FeedPost>(predicate: #Predicate<FeedPost> { $0.dreamID == dreamID })
+        for post in (try? context.fetch(postDescriptor)) ?? [] {
+            context.delete(post)
+        }
+        let dreamDescriptor = FetchDescriptor<Dream>(predicate: #Predicate<Dream> { $0.id == dreamID })
+        if let dream = (try? context.fetch(dreamDescriptor))?.first {
+            dream.isPublic = false
+        }
+        save()
     }
 
     private func unpublishRemote(dreamID: UUID) {
@@ -866,7 +948,9 @@ extension DreamRecord {
     }
 }
 
-#if DEBUG
+// Not wrapped in `#if DEBUG`: the `#Preview` blocks that use this are compiled in
+// every configuration (including the Release/archive build), so PreviewData must
+// be too. It's never invoked in the shipped app — previews only run in Xcode.
 @MainActor
 enum PreviewData {
     /// An in-memory container seeded with samples, for SwiftUI previews.
@@ -884,7 +968,6 @@ enum PreviewData {
 
     static var store: DreamStore { DreamStore(context: container.mainContext) }
 }
-#endif
 
 // MARK: - Progression
 

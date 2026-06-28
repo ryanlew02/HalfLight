@@ -42,6 +42,7 @@ struct EditProfileView: View {
                 .fontWeight(.semibold)
                 .disabled(auth.isWorking)
             }
+            KeyboardDoneButton()
         }
         .onAppear {
             bio = auth.bio ?? ""

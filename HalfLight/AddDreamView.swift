@@ -254,6 +254,7 @@ struct AddDreamView: View {
                         .fontWeight(.semibold)
                         .disabled(!canSave)
                 }
+                KeyboardDoneButton()
             }
         }
         .tint(.dreamPrimary)

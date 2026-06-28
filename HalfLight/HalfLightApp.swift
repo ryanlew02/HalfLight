@@ -111,6 +111,8 @@ private struct RootView: View {
                 NightSkyBackground()
             }
         }
+        // Tap anywhere outside a text field to dismiss the keyboard, app-wide.
+        .dismissKeyboardOnTapOutside()
         .task {
             if store == nil {
                 store = makeStore()
@@ -134,6 +136,10 @@ private struct RootView: View {
             if status == .signedIn {
                 store?.reconcileFeed()
                 store?.reconcileNotifications()
+                // Self-heal the server entitlement: if this account is subscribed
+                // on the device but has no subscriptions row yet, push it now so
+                // the AI gate sees it.
+                Task { await subscriptions.syncIfEntitled() }
                 // Register for APNs and upload this device's token so the
                 // push-notify function can reach the dreamer.
                 PushService.shared.start()

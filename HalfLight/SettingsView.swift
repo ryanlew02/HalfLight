@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("soundEffectsEnabled") private var soundEnabled = true
     @Environment(LanguageManager.self) private var language
     @State private var showPaywall = false
+    @State private var showRestoreResult = false
 
     var body: some View {
         Form {
@@ -88,6 +89,19 @@ struct SettingsView: View {
                 } label: {
                     SettingRow(title: "About", systemImage: "info.circle", value: nil)
                 }
+                // Re-attach an existing App Store subscription to this account
+                // (e.g. on a new device or after reinstalling).
+                Button {
+                    SoundManager.shared.play(.tap)
+                    Task {
+                        await subscriptions.restore()
+                        showRestoreResult = true
+                    }
+                } label: {
+                    SettingRow(title: "Restore Purchases", systemImage: "arrow.clockwise", value: nil)
+                }
+                .buttonStyle(.plain)
+                .disabled(subscriptions.isPurchasing)
             }
             .listRowBackground(Color.dreamSurface)
 
@@ -110,6 +124,22 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .sheet(isPresented: $showPaywall) { PaywallView() }
+        .alert("Restore Purchases", isPresented: $showRestoreResult) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(restoreResultMessage)
+        }
+    }
+
+    /// A friendly result message after a Restore attempt.
+    private var restoreResultMessage: LocalizedStringKey {
+        if subscriptions.isSubscribed && subscriptions.lastSyncSucceeded {
+            return "Your HalfLight Pro subscription has been restored."
+        } else if !subscriptions.isSubscribed {
+            return "We couldn't find an active subscription for your Apple ID. If you believe this is a mistake, email support@thelanternhours.com."
+        } else {
+            return "Something went wrong restoring your purchase. Please email support@thelanternhours.com and we'll get it sorted."
+        }
     }
 }
 
@@ -232,6 +262,7 @@ struct NameSettingsView: View {
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Name")
+        .keyboardDoneToolbar()
         .onAppear { draft = userName }
         .onChange(of: draft) { _, newValue in
             // Only a signed-out dreamer can set a custom local name.
@@ -625,6 +656,7 @@ struct ChangePasswordView: View {
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Change Password")
+        .keyboardDoneToolbar()
         .onAppear {
             auth.errorMessage = nil
             auth.infoMessage = nil
@@ -730,6 +762,7 @@ struct UsernameSettingsView: View {
                 .fontWeight(.semibold)
                 .disabled(!canSave)
             }
+            KeyboardDoneButton()
         }
         .alert("Change username?", isPresented: $showWarning) {
             Button("Change", role: .destructive) { commit() }

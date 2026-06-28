@@ -40,8 +40,23 @@ struct MainTabView: View {
 
     var body: some View {
         @Bindable var router = router
+        @Bindable var store = store
         tabHost
             .foregroundStyle(Color.dreamText)
+            // Surface a daily rate-limit rejection (publishing, commenting,
+            // reporting) from anywhere in the app, then clear it.
+            .alert(
+                "Daily limit reached",
+                isPresented: Binding(
+                    get: { store.rateLimitNotice != nil },
+                    set: { if !$0 { store.rateLimitNotice = nil } }
+                ),
+                presenting: store.rateLimitNotice
+            ) { _ in
+                Button("OK", role: .cancel) { store.rateLimitNotice = nil }
+            } message: { notice in
+                Text(notice)
+            }
             .environment(\.tabBarHeight, tabBarHeight)
             .environment(router)
             .safeAreaInset(edge: .bottom) {

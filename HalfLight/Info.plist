@@ -21,5 +21,13 @@
 			</array>
 		</dict>
 	</array>
+
+	<!--
+	  The app uses only standard HTTPS (Supabase) and no custom/non-exempt
+	  cryptography, so it's exempt from export-compliance encryption rules.
+	  Declaring this here skips the "missing compliance" prompt on every upload.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

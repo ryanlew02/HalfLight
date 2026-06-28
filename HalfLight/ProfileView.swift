@@ -584,6 +584,7 @@ struct AllThemesView: View {
         .tabBarClearance()
         .background { DreamBackground() }
         .searchable(text: $query, prompt: "Search themes")
+        .keyboardDoneToolbar()
         .navigationTitle("All themes")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

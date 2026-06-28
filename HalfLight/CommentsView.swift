@@ -68,6 +68,7 @@ struct CommentsView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
+                KeyboardDoneButton()
             }
             .navigationDestination(item: $selectedProfile) { author in
                 PublicProfileView(author: author)

@@ -75,6 +75,7 @@ struct UsernameSetupView: View {
             .padding(DreamMetric.screen)
         }
         .background { NightSkyBackground() }
+        .keyboardDoneToolbar()
         .onAppear {
             firstName = auth.firstName ?? ""
             lastName = auth.lastName ?? ""

@@ -67,6 +67,7 @@ struct LucidLessonView: View {
             bottomBar
         }
         .background { DreamBackground().ignoresSafeArea() }
+        .keyboardDoneToolbar()
     }
 
     // MARK: - Top bar (progress + close)

@@ -48,6 +48,9 @@ final class SubscriptionManager {
     private(set) var isPurchasing = false
     /// A user-facing message when a purchase fails; `nil` when there's no error.
     private(set) var errorMessage: String?
+    /// Whether the last attempt to record the entitlement on the server
+    /// succeeded. Drives the Restore result message in Settings.
+    private(set) var lastSyncSucceeded = false
 
     /// The long-running task that observes out-of-band entitlement changes
     /// (renewals, Ask-to-Buy approvals, refunds, family-sharing, …).
@@ -125,6 +128,14 @@ final class SubscriptionManager {
         }
     }
 
+    /// Push the current entitlement to the server if the dreamer is subscribed.
+    /// Called on sign-in so an entitled account whose server row is missing (a
+    /// failed earlier sync, or a purchase made on another account) self-heals.
+    func syncIfEntitled() async {
+        await refreshEntitlement()
+        if isSubscribed { await syncToServer() }
+    }
+
     /// Open the system "Manage Subscriptions" sheet.
     func showManageSubscriptions() async {
         #if os(iOS)
@@ -185,6 +196,7 @@ final class SubscriptionManager {
     /// Store Server Notifications webhook is the durable backstop, so failures here
     /// are silent (the listener will retry on the next update).
     private func syncToServer() async {
+        lastSyncSucceeded = false
         guard let jws = await latestTransactionJWS() else { return }
         guard let accessToken = await currentAccessToken() else { return }
 
@@ -198,7 +210,9 @@ final class SubscriptionManager {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try? JSONEncoder().encode(["jws": jws])
 
-        _ = try? await URLSession.shared.data(for: request)
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let status = (response as? HTTPURLResponse)?.statusCode else { return }
+        lastSyncSucceeded = (200..<300).contains(status)
     }
 
     /// The signed JWS of the most recent verified Pro transaction, used by the

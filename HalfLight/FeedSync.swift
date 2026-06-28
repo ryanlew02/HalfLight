@@ -20,6 +20,22 @@
 
 import Foundation
 
+/// Errors the feed backend surfaces to the app.
+enum FeedSyncError: Error {
+    /// The server rejected a write because the dreamer hit a per-day cap
+    /// (publishing dreams, commenting, or reporting). Enforced by the
+    /// `enforce_*_limit` triggers, which raise SQLSTATE `P0429` with a
+    /// `RATE_LIMIT` marker.
+    case rateLimited
+}
+
+/// True when `error` is a server-side daily rate-limit rejection (SQLSTATE
+/// `P0429` / `RATE_LIMIT` marker) raised by the feed write triggers.
+func isRateLimitError(_ error: Error) -> Bool {
+    let text = String(describing: error)
+    return text.contains("P0429") || text.contains("RATE_LIMIT")
+}
+
 /// Wire shape of a row in `feed_posts`. snake_case to match Postgres.
 struct FeedPostRecord: Codable, Sendable {
     var id: UUID
@@ -187,7 +203,9 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
 
     func publish(_ post: FeedPostUpsert) async throws {
         // Omits the count columns, so an edit leaves the server's totals intact.
-        try await client.from("feed_posts").upsert(post, onConflict: "id").execute()
+        try await mapRateLimit {
+            try await client.from("feed_posts").upsert(post, onConflict: "id").execute()
+        }
     }
 
     func unpublish(dreamID: UUID) async throws {
@@ -258,7 +276,9 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
     }
 
     func addComment(_ comment: FeedCommentRecord) async throws {
-        try await client.from("feed_comments").insert(comment).execute()
+        try await mapRateLimit {
+            try await client.from("feed_comments").insert(comment).execute()
+        }
     }
 
     func deleteComment(id: UUID) async throws {
@@ -308,9 +328,11 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
 
     func follow(username: String) async throws {
         guard let uid = await currentUserID() else { return }
-        try await client.from("follows")
-            .upsert(FollowRow(followerID: uid, followeeUsername: username), onConflict: "follower_id,followee_username")
-            .execute()
+        try await mapRateLimit {
+            try await client.from("follows")
+                .upsert(FollowRow(followerID: uid, followeeUsername: username), onConflict: "follower_id,followee_username")
+                .execute()
+        }
     }
 
     func unfollow(username: String) async throws {
@@ -350,18 +372,33 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
         guard let uid = await currentUserID() else { return }
         // onConflict matches the (reporter, post, comment) unique key so a repeat
         // report updates the reason instead of erroring.
-        try await client.from("feed_reports")
-            .upsert(ReportRow(reporterID: uid, postID: postID, reason: reason),
-                    onConflict: "reporter_id,post_id,comment_id")
-            .execute()
+        try await mapRateLimit {
+            try await client.from("feed_reports")
+                .upsert(ReportRow(reporterID: uid, postID: postID, reason: reason),
+                        onConflict: "reporter_id,post_id,comment_id")
+                .execute()
+        }
     }
 
     func reportComment(commentID: UUID, reason: String) async throws {
         guard let uid = await currentUserID() else { return }
-        try await client.from("feed_reports")
-            .upsert(ReportRow(reporterID: uid, commentID: commentID, reason: reason),
-                    onConflict: "reporter_id,post_id,comment_id")
-            .execute()
+        try await mapRateLimit {
+            try await client.from("feed_reports")
+                .upsert(ReportRow(reporterID: uid, commentID: commentID, reason: reason),
+                        onConflict: "reporter_id,post_id,comment_id")
+                .execute()
+        }
+    }
+
+    /// Run a feed write, translating the server's daily-cap rejection into a
+    /// typed `FeedSyncError.rateLimited` so callers can show a friendly message.
+    private func mapRateLimit(_ work: () async throws -> Void) async throws {
+        do {
+            try await work()
+        } catch {
+            if isRateLimitError(error) { throw FeedSyncError.rateLimited }
+            throw error
+        }
     }
 
     // MARK: Small row shapes

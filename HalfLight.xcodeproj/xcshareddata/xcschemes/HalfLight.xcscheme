@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "249705332FDE065D00D64129"
-               BuildableName = "HalfLight: AI Dream Journal .app"
+               BuildableName = "HalfLight.app"
                BlueprintName = "HalfLight"
                ReferencedContainer = "container:HalfLight.xcodeproj">
             </BuildableReference>
@@ -58,14 +58,11 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "249705332FDE065D00D64129"
-            BuildableName = "HalfLight: AI Dream Journal .app"
+            BuildableName = "HalfLight.app"
             BlueprintName = "HalfLight"
             ReferencedContainer = "container:HalfLight.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <StoreKitConfigurationFileReference
-         identifier = "../../HalfLight/HalfLight.storekit">
-      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -78,7 +75,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "249705332FDE065D00D64129"
-            BuildableName = "HalfLight: AI Dream Journal .app"
+            BuildableName = "HalfLight.app"
             BlueprintName = "HalfLight"
             ReferencedContainer = "container:HalfLight.xcodeproj">
          </BuildableReference>
