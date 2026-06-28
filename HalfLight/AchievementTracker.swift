@@ -109,6 +109,17 @@ enum AchievementTracker {
         Array(sortedByRecency(for: stats).lazy.filter { $0.isUnlocked(for: stats) }.prefix(limit))
     }
 
+    /// Mark every currently-unlocked achievement as already celebrated (without
+    /// returning any for a popup). Used to re-baseline after a sign-in pulls the
+    /// account's progress in, so the backlog of now-unlocked badges doesn't fire a
+    /// burst of popups — only badges earned *after* this point are celebrated.
+    static func markAllCelebrated(for stats: AchievementStats) {
+        let unlocked = Achievement.all.filter { $0.isUnlocked(for: stats) }
+        storeCelebrated(celebratedIDs().union(unlocked.map(\.id)))
+        stampUnlocked(unlocked.map(\.id))
+        UserDefaults.standard.set(true, forKey: seededKey)
+    }
+
     /// Forget all celebration and unlock-date bookkeeping (used on sign-out so the
     /// next person on this device doesn't inherit unlocked badges). Achievements
     /// re-derive from stats, so a returning account silently re-baselines via

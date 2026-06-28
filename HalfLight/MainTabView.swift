@@ -11,6 +11,7 @@ import SwiftData
 
 struct MainTabView: View {
     @Environment(DreamStore.self) private var store
+    @Environment(AuthService.self) private var auth
     @Environment(\.scenePhase) private var scenePhase
     @Query private var dreams: [Dream]
     @AppStorage("lucidSectionsCompleted") private var lucidSectionsCompleted = 0
@@ -31,6 +32,11 @@ struct MainTabView: View {
     /// Covers startup with the dreamy launch screen while every tab is built behind
     /// it, so the app reveals with all screens ready (no first-open lag).
     @State private var isWarmingUp = true
+    /// True for the brief window after a sign-in while the account's dreams, XP and
+    /// achievements stream in. Celebrations are folded silently into the baseline
+    /// during this window, so signing in doesn't unleash a backlog of level-up and
+    /// achievement popups for progress that was already earned on the account.
+    @State private var isRestoringAccount = false
 
     var body: some View {
         @Bindable var router = router
@@ -88,16 +94,37 @@ struct MainTabView: View {
                 await warmUpAndReveal()
             }
             .onChange(of: unlockedAchievementCount) { _, _ in
+                // While an account is restoring, fold the incoming badges into the
+                // baseline silently instead of celebrating each one.
+                if isRestoringAccount {
+                    AchievementTracker.markAllCelebrated(for: achievementStats)
+                    return
+                }
                 let newly = AchievementTracker.newlyUnlocked(for: achievementStats)
                 if !newly.isEmpty { router.presentAchievements(newly) }
             }
             // Any XP source (a logged dream, a lucid lesson, a quest, an achievement)
             // can push the dreamer over a level threshold — celebrate it from here.
             .onChange(of: currentLevel) { _, newLevel in
+                // Account restore: advance the baseline without a level-up screen.
+                if isRestoringAccount { celebratedLevel = newLevel; return }
                 guard celebratedLevel != 0, newLevel > celebratedLevel else { return }
                 let rank = DreamProgression.rank(forLevel: newLevel)
                 router.presentLevelUp(level: newLevel, rank: localized(rank.name))
                 celebratedLevel = newLevel
+            }
+            // A sign-in pulls the account's dreams/XP/achievements in over the next
+            // moments; suppress celebrations for that surge and re-baseline once it
+            // has settled, so only progress earned afterwards is celebrated.
+            .onChange(of: auth.status) { _, status in
+                guard status == .signedIn else { return }
+                isRestoringAccount = true
+                Task {
+                    try? await Task.sleep(for: .seconds(4))
+                    celebratedLevel = currentLevel
+                    AchievementTracker.markAllCelebrated(for: achievementStats)
+                    isRestoringAccount = false
+                }
             }
             // Keep reminders in step with usage: app foreground, journaling activity,
             // and the setting itself all reschedule the morning / inactivity / streak nudges.
