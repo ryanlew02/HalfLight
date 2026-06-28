@@ -28,7 +28,7 @@ struct AuthView: View {
         var toggle: String { self == .signUp ? "Sign in" : "Create one" }
     }
 
-    @State private var mode: Mode = .signUp
+    @State private var mode: Mode = .signIn
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var username = ""
@@ -37,11 +37,20 @@ struct AuthView: View {
     @State private var confirmPassword = ""
     @State private var showForgotPassword = false
 
+    /// Gates building the form until the sheet has finished sliding in. The Sign
+    /// in with Apple control bridges to UIKit, and creating it mid-presentation
+    /// blocks the main thread — the sheet stutters and taps on the fields don't
+    /// register until it settles. We show a light placeholder first, then build
+    /// the real form a beat later, once the animation is done.
+    @State private var isReady = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 Group {
-                    if auth.isSignedIn {
+                    if !isReady {
+                        loadingPlaceholder
+                    } else if auth.isSignedIn {
                         signedIn
                     } else {
                         signedOut
@@ -50,6 +59,12 @@ struct AuthView: View {
                 .padding(DreamMetric.screen)
             }
             .background { NightSkyBackground() }
+            .task {
+                // Roughly the sheet's slide-in duration; building the UIKit-backed
+                // form before this finishes is what causes the freeze.
+                try? await Task.sleep(for: .milliseconds(350))
+                withAnimation(.easeOut(duration: 0.2)) { isReady = true }
+            }
             .navigationDestination(isPresented: $showForgotPassword) {
                 ForgotPasswordView(email: email)
             }
@@ -61,6 +76,14 @@ struct AuthView: View {
                             .foregroundStyle(Color.dreamText.opacity(0.6))
                     }
                     .accessibilityLabel("Close")
+                }
+                // A Done button above the keyboard so the user can dismiss it from
+                // any field (some fields have no Return key to do this otherwise).
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.dreamPrimary)
                 }
             }
             .onChange(of: auth.isSignedIn) { _, signedIn in
@@ -85,16 +108,13 @@ struct AuthView: View {
             VStack(spacing: DreamMetric.md) {
                 if mode == .signUp {
                     HStack(spacing: DreamMetric.md) {
-                        field("First name", text: $firstName, isSecure: false)
-                            .textContentType(.givenName)
+                        field("First name", text: $firstName, isSecure: false, contentType: .givenName)
                             .focused($focusedField, equals: .firstName)
-                        field("Last name", text: $lastName, isSecure: false)
-                            .textContentType(.familyName)
+                        field("Last name", text: $lastName, isSecure: false, contentType: .familyName)
                             .focused($focusedField, equals: .lastName)
                     }
                     VStack(alignment: .leading, spacing: DreamMetric.xs) {
-                        field("Username", text: $username, isSecure: false)
-                            .textContentType(.username)
+                        field("Username", text: $username, isSecure: false, contentType: .username)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .focused($focusedField, equals: .username)
@@ -106,8 +126,7 @@ struct AuthView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: DreamMetric.xs) {
-                    field("Email", text: $email, isSecure: false)
-                        .textContentType(.emailAddress)
+                    field("Email", text: $email, isSecure: false, contentType: .emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -118,12 +137,10 @@ struct AuthView: View {
                             .padding(.horizontal, DreamMetric.xs)
                     }
                 }
-                field("Password", text: $password, isSecure: true)
-                    .textContentType(mode == .signUp ? .newPassword : .password)
+                field("Password", text: $password, isSecure: true, contentType: mode == .signUp ? .newPassword : .password)
                     .focused($focusedField, equals: .password)
                 if mode == .signUp {
-                    field("Confirm password", text: $confirmPassword, isSecure: true)
-                        .textContentType(.newPassword)
+                    field("Confirm password", text: $confirmPassword, isSecure: true, contentType: .newPassword)
                         .focused($focusedField, equals: .confirmPassword)
                     passwordRequirements
                 }
@@ -168,6 +185,23 @@ struct AuthView: View {
         }
         // Clear any leftover availability state from a prior presentation.
         .onAppear { auth.resetUsernameStatus() }
+    }
+
+    // MARK: - Loading placeholder
+
+    /// Shown for the brief moment while the sheet animates in, before the real
+    /// form is built. Keeps the presentation smooth and gives the user something
+    /// on-brand to look at rather than a blank, unresponsive sheet.
+    private var loadingPlaceholder: some View {
+        VStack(spacing: DreamMetric.lg) {
+            Image(systemName: "moon.stars.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(Color.dreamPrimary)
+            ProgressView()
+                .tint(Color.dreamPrimary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 420)
+        .padding(.top, DreamMetric.xxl)
     }
 
     private var header: some View {
@@ -285,12 +319,14 @@ struct AuthView: View {
         .animation(.easeOut(duration: 0.15), value: met)
     }
 
-    private func field(_ placeholder: String, text: Binding<String>, isSecure: Bool) -> some View {
+    private func field(_ placeholder: String, text: Binding<String>, isSecure: Bool, contentType: UITextContentType? = nil) -> some View {
         Group {
             if isSecure {
                 SecureField(placeholder, text: text)
+                    .textContentType(contentType)
             } else {
                 TextField(placeholder, text: text)
+                    .textContentType(contentType)
             }
         }
         .font(.dreamBody(16))
@@ -400,6 +436,7 @@ struct ForgotPasswordView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State var email: String
+    @FocusState private var emailFocused: Bool
 
     private var canSubmit: Bool {
         let trimmed = email.trimmingCharacters(in: .whitespaces)
@@ -416,6 +453,7 @@ struct ForgotPasswordView: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .focused($emailFocused)
 
                 if let error = auth.errorMessage {
                     banner(error, symbol: "exclamationmark.triangle.fill", tint: .red)
@@ -442,6 +480,15 @@ struct ForgotPasswordView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar {
+            // A Done button above the keyboard to dismiss it from the email field.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { emailFocused = false }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.dreamPrimary)
+            }
+        }
         .onAppear {
             auth.errorMessage = nil
             auth.infoMessage = nil

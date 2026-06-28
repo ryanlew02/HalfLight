@@ -36,4 +36,17 @@ struct DayLog {
         timestamps.append(day)
         UserDefaults.standard.set(timestamps, forKey: key)
     }
+
+    /// Replace the log with exactly `dates` (used when pulling the account's days
+    /// down on sign-in so the device mirrors the account).
+    func replaceAll(_ dates: some Sequence<Date>) {
+        let timestamps = Set(dates.map { Calendar.current.startOfDay(for: $0).timeIntervalSince1970 })
+        UserDefaults.standard.set(Array(timestamps), forKey: key)
+    }
+
+    /// Forget every recorded day (used on sign-out so the streak, journaled-day
+    /// count and journaling XP don't outlive the account that earned them).
+    func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }

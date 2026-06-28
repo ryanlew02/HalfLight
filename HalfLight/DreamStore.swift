@@ -67,6 +67,14 @@ final class DreamStore {
         self.feedSync = feedSync
     }
 
+    /// Re-read the cached day logs from `DayLog` after the progress sync has
+    /// rewritten them, so the streak and journaled-day counts reflect the account's
+    /// merged state without waiting for a relaunch.
+    func refreshDayLogs() {
+        skippedDays = DayLog.skipped.days()
+        creditedDays = DayLog.journalCredit.days()
+    }
+
     // MARK: - Mutations
 
     /// Mark today as journaled even when no dream was recorded ("can't remember").
@@ -176,7 +184,8 @@ final class DreamStore {
     /// The account whose dreams currently populate the local store, remembered so a
     /// later sign-in by a *different* account can defensively clear data left behind
     /// by an interrupted sign-out. `nil` (absent) means a guest/anonymous session.
-    private static let lastOwnerKey = "lastSignedInUserID"
+    /// Also read by `QuestSeed` to tie the weekly quest board to the account.
+    static let lastOwnerKey = "lastSignedInUserID"
 
     /// Drop every locally cached dream, feed post, follow, comment and tombstone.
     ///
@@ -193,6 +202,14 @@ final class DreamStore {
         deleteAll(AppNotification.self)
         deleteAll(DeletedDream.self)
         save()
+        // The "can't remember" and journaling-XP-credit day logs live outside
+        // SwiftData (UserDefaults), so they don't get cleared by the deletes above.
+        // Wipe them too — otherwise the streak, journaled-day count and XP would
+        // survive a sign-out and linger for the next person on this device.
+        DayLog.skipped.clear()
+        DayLog.journalCredit.clear()
+        skippedDays = []
+        creditedDays = []
         // Per-device one-time repairs should re-evaluate against the next account,
         // and the owner marker is cleared until the next sign-in re-stamps it.
         UserDefaults.standard.removeObject(forKey: "didRepublishVisibility_v1")

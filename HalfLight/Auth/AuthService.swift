@@ -89,6 +89,12 @@ protocol AuthBackend: Sendable {
     func fetchLucidProgress() async -> [String]?
     /// Store the completed Lucid Path lesson IDs on the account.
     func updateLucidProgress(_ lessons: [String]) async throws
+    /// The account's synced progress blob (skipped/credit days, quest XP, claimed
+    /// quests, quest seed). `nil` when the server couldn't be reached, so a failed
+    /// fetch never clobbers local progress.
+    func fetchProgressState() async -> ProgressState?
+    /// Store the account's progress blob.
+    func updateProgressState(_ state: ProgressState) async throws
     /// Change the current user's username. Throws if it's taken or the server's
     /// 30-day cooldown rejects it.
     func updateUsername(_ username: String) async throws
@@ -292,6 +298,40 @@ final class AuthService {
     /// and rehydrates on the next sign-in, so the signed-out app shows zero.
     func clearLocalLucidProgress() {
         LucidProgress.clear()
+    }
+
+    // MARK: - Progress state sync (streak days, quest XP, quest seed)
+
+    /// Keep the account and device in step on the progress blob — the "can't
+    /// remember"/credit day logs, banked quest XP, claimed quests and quest seed.
+    /// Merges (never loses) local and remote, applies the result locally, and
+    /// pushes it back. A failed fetch is left untouched so a stale local set never
+    /// clobbers the account. Mirrors `syncLucidProgress`; call it from the same
+    /// places. Returns whether the local stores changed, so a caller holding a
+    /// cache (e.g. `DreamStore`) knows to refresh.
+    @discardableResult
+    func syncProgressState() async -> Bool {
+        guard isSignedIn else { return false }
+        guard let remote = await backend.fetchProgressState() else { return false }
+        let local = await ProgressState.local()
+        let merged = local.merged(with: remote)
+        let changedLocally = merged != local
+        if changedLocally { await merged.applyLocally() }
+        if merged != remote { try? await backend.updateProgressState(merged) }
+        return changedLocally
+    }
+
+    /// Drop the device's local progress (declined the merge on sign-in), then pull
+    /// the account's — mirroring how declining to merge dreams discards the local
+    /// ones. Returns whether local stores changed so the caller can refresh caches.
+    @discardableResult
+    func discardLocalProgressState() async -> Bool {
+        QuestRewards.reset()
+        DayLog.skipped.clear()
+        DayLog.journalCredit.clear()
+        guard let remote = await backend.fetchProgressState() else { return true }
+        await remote.applyLocally()
+        return true
     }
 
     /// Refresh the cached profile from the account whenever signed in: the server
@@ -641,6 +681,13 @@ final class AuthService {
     func signOut() async {
         isWorking = true
         defer { isWorking = false }
+        // Save this session's progress to the account *before* the session ends and
+        // the sign-out wipe clears it locally. Otherwise quests claimed (or streak
+        // days logged) during the session — which are only pushed on launch/sign-in
+        // otherwise — wouldn't reach the account, and the next sign-in would pull a
+        // stale state: changed quests, lost claims. Runs while still authenticated.
+        await syncLucidProgress()
+        await syncProgressState()
         do {
             try await backend.signOut()
             // Wipe the cached identity (name, @handle, bio, photo) so the signed-out
@@ -894,6 +941,18 @@ final class MockAuthBackend: AuthBackend {
 
     func updateLucidProgress(_ lessons: [String]) async throws {
         UserDefaults.standard.set(lessons, forKey: "mockLucidProgress")
+    }
+
+    func fetchProgressState() async -> ProgressState? {
+        // Always "reachable": decode the stored blob, or an empty state if none.
+        guard let data = UserDefaults.standard.data(forKey: "mockProgressState"),
+              let state = try? JSONDecoder().decode(ProgressState.self, from: data)
+        else { return .empty }
+        return state
+    }
+
+    func updateProgressState(_ state: ProgressState) async throws {
+        UserDefaults.standard.set(try? JSONEncoder().encode(state), forKey: "mockProgressState")
     }
 
     func updateUsername(_ username: String) async throws {
@@ -1227,6 +1286,42 @@ final class SupabaseAuthBackend: AuthBackend {
         try await client
             .from("profiles")
             .update(LucidUpdate(lucidCompletedLessons: lessons))
+            .eq("id", value: userID)
+            .execute()
+    }
+
+    func fetchProgressState() async -> ProgressState? {
+        guard SupabaseConfig.isConfigured,
+              let userID = (try? await client.auth.session)?.user.id else { return nil }
+        struct ProgressRow: Decodable {
+            let progressState: ProgressState?
+            enum CodingKeys: String, CodingKey { case progressState = "progress_state" }
+        }
+        // A thrown error → `nil` (unreachable), so the caller won't overwrite the
+        // account with a stale local set. A present-but-null column → empty state.
+        guard let rows: [ProgressRow] = try? await client
+            .from("profiles")
+            .select("progress_state")
+            .eq("id", value: userID)
+            .limit(1)
+            .execute()
+            .value
+        else { return nil }
+        return rows.first?.progressState ?? .empty
+    }
+
+    func updateProgressState(_ state: ProgressState) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        guard let userID = (try? await client.auth.session)?.user.id else {
+            throw AuthError.message("You need to be signed in to save your progress.")
+        }
+        struct ProgressUpdate: Encodable {
+            let progressState: ProgressState
+            enum CodingKeys: String, CodingKey { case progressState = "progress_state" }
+        }
+        try await client
+            .from("profiles")
+            .update(ProgressUpdate(progressState: state))
             .eq("id", value: userID)
             .execute()
     }

@@ -108,4 +108,15 @@ enum AchievementTracker {
     static func recentlyUnlocked(for stats: AchievementStats, limit: Int) -> [Achievement] {
         Array(sortedByRecency(for: stats).lazy.filter { $0.isUnlocked(for: stats) }.prefix(limit))
     }
+
+    /// Forget all celebration and unlock-date bookkeeping (used on sign-out so the
+    /// next person on this device doesn't inherit unlocked badges). Achievements
+    /// re-derive from stats, so a returning account silently re-baselines via
+    /// `seedIfNeeded` on its next sign-in.
+    static func reset() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: celebratedKey)
+        defaults.removeObject(forKey: unlockDatesKey)
+        defaults.removeObject(forKey: seededKey)
+    }
 }

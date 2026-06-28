@@ -159,7 +159,11 @@ extension Quest {
     /// for variety. Sorting before each shuffle keeps the result deterministic.
     static func weekly(for date: Date = .now, count: Int = 5) -> [Quest] {
         let start = weekStart(for: date)
-        var rng = QuestRandomGenerator(seed: UInt64(bitPattern: Int64(start.timeIntervalSince1970)))
+        // Mix the week start with the account's quest seed: quests still rotate
+        // weekly, but each account (and each fresh guest after a sign-out) draws a
+        // different board rather than everyone sharing the same five.
+        let weekSeed = UInt64(bitPattern: Int64(start.timeIntervalSince1970))
+        var rng = QuestRandomGenerator(seed: weekSeed ^ QuestSeed.current)
         let categories = QuestCategory.allCases.sorted().shuffled(using: &rng).prefix(count)
         return categories.compactMap { category in
             pool.filter { $0.category == category }
@@ -207,6 +211,51 @@ extension Quest {
     }
 }
 
+/// The seed that personalizes the weekly quest draw.
+///
+/// When signed in, it's derived deterministically from the account's user id, so
+/// the board is a pure function of (account, week): identical on every device,
+/// and restored automatically on sign-in without any server round-trip. When
+/// signed out (guest), it falls back to a stored random seed that's rolled fresh
+/// on sign-out — so a guest sees a new board, but the account's board is untouched
+/// and returns the moment they sign back in.
+enum QuestSeed {
+    private static let key = "questSeed"
+
+    static var current: UInt64 {
+        // Signed in: tie the board to the account id (the same marker DreamStore
+        // stamps on sign-in and clears on sign-out), so it never drifts.
+        if let uid = UserDefaults.standard.string(forKey: DreamStore.lastOwnerKey), !uid.isEmpty {
+            return deterministicSeed(from: uid)
+        }
+        // Guest: a stored random seed, generated once and kept until sign-out.
+        if let stored = UserDefaults.standard.object(forKey: key) as? NSNumber {
+            return stored.uint64Value
+        }
+        let seed = UInt64.random(in: .min ... .max)
+        UserDefaults.standard.set(NSNumber(value: seed), forKey: key)
+        return seed
+    }
+
+    /// Roll a brand-new random guest board (used on sign-out). No-op for the
+    /// account board, which is derived from the account id and so can't be lost.
+    static func regenerate() {
+        UserDefaults.standard.set(NSNumber(value: UInt64.random(in: .min ... .max)), forKey: key)
+    }
+
+    /// A stable 64-bit hash of `string` (FNV-1a over its UTF-8 bytes). Unlike
+    /// Swift's `Hasher`, which is seeded randomly per process, this reproduces the
+    /// same value across launches and devices — essential for a stable board.
+    private static func deterministicSeed(from string: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in string.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return hash
+    }
+}
+
 /// A small deterministic RNG (SplitMix64) so a seed reproduces the same sequence
 /// every launch — used to keep each week's quest draw stable.
 struct QuestRandomGenerator: RandomNumberGenerator {
@@ -232,7 +281,7 @@ struct QuestRandomGenerator: RandomNumberGenerator {
 enum QuestRewards {
     // Reuses the original "completed" key so quests whose XP was already banked
     // under the old auto-grant flow count as claimed (no double payout).
-    private static let claimedKey = "questCompletedKeys"
+    static let claimedKey = "questCompletedKeys"
 
     /// Synthetic id for the once-a-week "all quests complete" bonus.
     static let allCompleteBonusID = "all-complete-bonus"
@@ -293,5 +342,21 @@ enum QuestRewards {
 
     static func claimBonus(weekStart: Date, currentTotal: Int) -> Int {
         claim(id: allCompleteBonusID, xp: Quest.allCompleteBonusXP, weekStart: weekStart, currentTotal: currentTotal)
+    }
+
+    // MARK: Reset
+
+    /// The `@AppStorage` key holding the banked quest XP folded into the dreamer's
+    /// total. Reset together with the claimed-quest records so quests start fresh.
+    static let bankedXPKey = "questBankedXP"
+
+    /// Forget every claimed-quest record and the banked quest XP, and roll a fresh
+    /// quest board (used on sign-out so the next account on this device starts the
+    /// week's quests from scratch with a brand-new set).
+    static func reset() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: claimedKey)
+        defaults.removeObject(forKey: bankedXPKey)
+        QuestSeed.regenerate()
     }
 }

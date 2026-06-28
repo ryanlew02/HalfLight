@@ -150,13 +150,19 @@ private struct RootView: View {
                         showMergePrompt = true
                     } else {
                         store?.reconcileWithRemote(claimLocalDreams: false)
-                        Task { await auth.syncLucidProgress() }
+                        Task {
+                            await auth.syncLucidProgress()
+                            if await auth.syncProgressState() { store?.refreshDayLogs() }
+                        }
                     }
                 case .signedUp, .none:
                     // A new account (or a launch session-restore): adopt any
                     // on-device dreams and Lucid Path progress into the account.
                     store?.reconcileWithRemote(claimLocalDreams: true)
-                    Task { await auth.syncLucidProgress() }
+                    Task {
+                        await auth.syncLucidProgress()
+                        if await auth.syncProgressState() { store?.refreshDayLogs() }
+                    }
                 }
             } else if status == .signedOut, previous == .signedIn {
                 // A real sign-out (not a guest simply launching the app, which goes
@@ -165,6 +171,14 @@ private struct RootView: View {
                 // backed up on the server and rehydrate on the next sign-in.
                 store?.wipeLocalData()
                 auth.clearLocalLucidProgress()
+                // Reset the rest of the local progression — quests, achievements and
+                // level celebrations — so the next account (or guest) starts fresh
+                // rather than inheriting this account's progress. XP and quest/
+                // achievement state are derived locally, so they rebuild from the
+                // account's own dreams on the next sign-in.
+                QuestRewards.reset()
+                AchievementTracker.reset()
+                UserDefaults.standard.removeObject(forKey: "celebratedLevel")
             }
         }
         // Logging into an existing account with guest data on the device: let the
@@ -172,12 +186,18 @@ private struct RootView: View {
         .alert("Merge this device's data?", isPresented: $showMergePrompt) {
             Button("Merge") {
                 store?.reconcileWithRemote(claimLocalDreams: true)
-                Task { await auth.syncLucidProgress() }
+                Task {
+                    await auth.syncLucidProgress()
+                    if await auth.syncProgressState() { store?.refreshDayLogs() }
+                }
                 showMergePrompt = false
             }
             Button("Don't Merge", role: .destructive) {
                 store?.reconcileWithRemote(claimLocalDreams: false)
-                Task { await auth.discardLocalLucidProgress() }
+                Task {
+                    await auth.discardLocalLucidProgress()
+                    if await auth.discardLocalProgressState() { store?.refreshDayLogs() }
+                }
                 showMergePrompt = false
             }
         } message: {

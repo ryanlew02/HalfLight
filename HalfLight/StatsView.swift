@@ -11,6 +11,7 @@ import SwiftData
 
 struct StatsView: View {
     @Environment(DreamStore.self) private var store
+    @Environment(AuthService.self) private var auth
     @Environment(AppRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     @Query private var dreams: [Dream]
@@ -228,6 +229,7 @@ struct StatsView: View {
         guard QuestRewards.isClaimable(quest, stats: questStats, weekStart: weekStart) else { return }
         questBankedXP = QuestRewards.claim(quest, weekStart: weekStart, currentTotal: questBankedXP)
         router.presentClaim(xp: quest.xp, title: quest.title)
+        Task { await auth.syncProgressState() }
     }
 
     /// Claim the "all quests complete" bonus.
@@ -237,6 +239,7 @@ struct StatsView: View {
         }
         questBankedXP = QuestRewards.claimBonus(weekStart: weekStart, currentTotal: questBankedXP)
         router.presentClaim(xp: Quest.allCompleteBonusXP, title: "All Quests Complete!")
+        Task { await auth.syncProgressState() }
     }
 
     @ViewBuilder

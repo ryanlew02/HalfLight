@@ -219,6 +219,9 @@ struct HomeView: View {
         let earnedXP = !hasJournalXPToday
         skippedDay = Calendar.current.startOfDay(for: .now).timeIntervalSince1970
         store.recordSkippedDay()
+        // Push the new "can't remember" day to the account so the streak follows
+        // immediately, picking up any other-device progress in the same round-trip.
+        Task { if await auth.syncProgressState() { store.refreshDayLogs() } }
         if earnedXP {
             // The button's style plays the press tap; reward popup adds its sound.
             router.presentClaim(
@@ -608,6 +611,9 @@ struct HomeView: View {
         }
         questBankedXP = QuestRewards.claim(quest, weekStart: Quest.weekStart(), currentTotal: questBankedXP)
         router.presentClaim(xp: quest.xp, title: localized(quest.title))
+        // Push the claim to the account right away so it survives a force-quit and
+        // reaches other devices without waiting for sign-out / relaunch.
+        Task { await auth.syncProgressState() }
     }
 
     // MARK: - Random dream tile ("wander back")
