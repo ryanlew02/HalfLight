@@ -36,6 +36,8 @@ struct PublicProfileView: View {
     /// The follow row for this author, if one exists (empty ⇒ not following).
     @Query private var follows: [Follow]
     @State private var selectedDream: Dream?
+    /// This author's follower / following counts, fetched from the backend.
+    @State private var followCounts: FollowCounts = .zero
 
     init(author: FeedAuthor) {
         self.author = author
@@ -123,6 +125,9 @@ struct PublicProfileView: View {
         .navigationDestination(item: $selectedDream) { dream in
             DreamDetailView(dream: dream)
         }
+        .task(id: author.username) {
+            followCounts = await auth.followCounts(for: author.username)
+        }
     }
 
     // MARK: - Header
@@ -140,6 +145,13 @@ struct PublicProfileView: View {
             }
 
             rankBadge
+
+            FollowStatsBar(
+                username: author.username,
+                displayName: author.name,
+                counts: followCounts
+            )
+            .padding(.top, DreamMetric.xs)
 
             Text(sharedCountLabel)
                 .font(.dreamBody(13, .medium))

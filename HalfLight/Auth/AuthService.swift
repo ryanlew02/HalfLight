@@ -41,6 +41,22 @@ struct ProfileInfo: Sendable {
     let usernameChangedAt: Date?
 }
 
+/// A dreamer in a follower/following list — enough to render a row and open their
+/// public profile. `photo` is their decoded avatar, if they've set one.
+struct FollowProfile: Identifiable, Hashable, Sendable {
+    let username: String
+    let name: String
+    let photo: Data?
+    var id: String { username.lowercased() }
+}
+
+/// The size of a dreamer's social graph, shown on profile headers.
+struct FollowCounts: Sendable, Equatable {
+    var followers: Int
+    var following: Int
+    static let zero = FollowCounts(followers: 0, following: 0)
+}
+
 /// The outcome of fetching the signed-in user's profile. Distinguishes a brand
 /// new account that has no profile yet (`absent` → show the setup screen) from a
 /// transient failure such as being offline (`unreachable` → don't mistake a
@@ -84,6 +100,13 @@ protocol AuthBackend: Sendable {
     /// anyone who hasn't set a photo. Powers avatars on social surfaces (the feed
     /// and comments) where only the author's @handle is known.
     func fetchAvatars(usernames: [String]) async -> [String: Data]
+    /// How many dreamers follow `username`, and how many it follows. Zeroed when
+    /// the server can't be reached — a count is informational, never load-bearing.
+    func followCounts(for username: String) async -> FollowCounts
+    /// The dreamers who follow `username` (newest-agnostic, ordered by handle).
+    func followers(of username: String) async -> [FollowProfile]
+    /// The dreamers `username` follows.
+    func following(of username: String) async -> [FollowProfile]
     /// The completed Lucid Path lesson IDs stored on the account. `nil` when the
     /// server couldn't be reached, so a failed fetch never clobbers local progress.
     func fetchLucidProgress() async -> [String]?
@@ -265,6 +288,24 @@ final class AuthService {
     /// absent and the caller falls back to initials.
     func avatars(forUsernames usernames: [String]) async -> [String: Data] {
         await backend.fetchAvatars(usernames: usernames)
+    }
+
+    // MARK: - Social graph (followers / following)
+
+    /// Follower and following counts for any dreamer's profile. Best-effort —
+    /// `.zero` when the server can't be reached.
+    func followCounts(for username: String) async -> FollowCounts {
+        await backend.followCounts(for: username)
+    }
+
+    /// The dreamers who follow `username`.
+    func followers(of username: String) async -> [FollowProfile] {
+        await backend.followers(of: username)
+    }
+
+    /// The dreamers `username` follows.
+    func following(of username: String) async -> [FollowProfile] {
+        await backend.following(of: username)
     }
 
     // MARK: - Lucid Path progress (tied to the account, like dreams)
@@ -933,6 +974,15 @@ final class MockAuthBackend: AuthBackend {
         return [me: data]
     }
 
+    func followCounts(for username: String) async -> FollowCounts {
+        // No multi-user backend in the mock — the social graph is empty.
+        .zero
+    }
+
+    func followers(of username: String) async -> [FollowProfile] { [] }
+
+    func following(of username: String) async -> [FollowProfile] { [] }
+
     func fetchLucidProgress() async -> [String]? {
         // The mock is always "reachable", so report an empty set (not nil) when
         // nothing has been stored yet.
@@ -1252,6 +1302,46 @@ final class SupabaseAuthBackend: AuthBackend {
             }
         }
         return result
+    }
+
+    func followCounts(for username: String) async -> FollowCounts {
+        guard SupabaseConfig.isConfigured else { return .zero }
+        struct CountRow: Decodable { let followers: Int; let following: Int }
+        // The base `follows` table's RLS hides other users' rows, so the count of
+        // who follows someone is only reachable through this SECURITY DEFINER RPC.
+        let rows: [CountRow]? = try? await client
+            .rpc("follow_counts", params: ["p_username": username])
+            .execute()
+            .value
+        guard let row = rows?.first else { return .zero }
+        return FollowCounts(followers: row.followers, following: row.following)
+    }
+
+    func followers(of username: String) async -> [FollowProfile] {
+        await fetchFollowProfiles(rpc: "followers_of", username: username)
+    }
+
+    func following(of username: String) async -> [FollowProfile] {
+        await fetchFollowProfiles(rpc: "following_of", username: username)
+    }
+
+    /// Shared decoder for the `followers_of` / `following_of` RPCs, which both
+    /// return `(username, name, avatar)` rows for the requested @handle.
+    private func fetchFollowProfiles(rpc: String, username: String) async -> [FollowProfile] {
+        guard SupabaseConfig.isConfigured else { return [] }
+        struct Row: Decodable { let username: String; let name: String; let avatar: String? }
+        let rows: [Row]? = try? await client
+            .rpc(rpc, params: ["p_username": username])
+            .execute()
+            .value
+        guard let rows else { return [] }
+        return rows.map { row in
+            FollowProfile(
+                username: row.username,
+                name: row.name,
+                photo: row.avatar.flatMap { Data(base64Encoded: $0) }
+            )
+        }
     }
 
     func fetchLucidProgress() async -> [String]? {

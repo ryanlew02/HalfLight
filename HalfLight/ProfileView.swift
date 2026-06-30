@@ -29,6 +29,8 @@ struct ProfileView: View {
     /// The just-picked photo awaiting crop, presented in `PhotoCropView`.
     @State private var cropItem: CropItem?
     @State private var showAuth = false
+    /// The dreamer's follower / following counts, fetched from the backend.
+    @State private var followCounts: FollowCounts = .zero
     /// Drives the push into the Progress screen (from the card or the Home shortcut).
     @State private var showingProgress = false
     /// Bumped when leaving the Profile tab to reset its NavigationStack to the root,
@@ -42,6 +44,10 @@ struct ProfileView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
+                    if auth.isSignedIn, let username = auth.username, !username.isEmpty {
+                        FollowStatsBar(username: username, displayName: userName, counts: followCounts)
+                            .frame(maxWidth: .infinity)
+                    }
                     // Signed out: sign-in prompt sits right under the header, above
                     // Progress and Top themes. Signed in: the bio takes its place
                     // (accountCard renders nothing, bioCard renders nothing if empty).
@@ -61,6 +67,12 @@ struct ProfileView: View {
             .onAppear {
                 consumeProgressIntent()
                 if auth.isSignedIn { store.reconcileNotifications() }
+            }
+            .task(id: auth.username) { await loadFollowCounts() }
+            // Refresh the counts when returning to the Profile tab so a follow made
+            // elsewhere (or someone following you) shows up without a relaunch.
+            .onChange(of: router.tab) { _, tab in
+                if tab == .profile { Task { await loadFollowCounts() } }
             }
             .onChange(of: router.openProgress) { _, _ in consumeProgressIntent() }
             // Leaving the Profile tab resets its navigation, so coming back lands on
@@ -268,6 +280,16 @@ struct ProfileView: View {
         guard router.openProgress else { return }
         router.openProgress = false
         DispatchQueue.main.async { showingProgress = true }
+    }
+
+    /// Pull the dreamer's follower / following counts for the header strip. Cleared
+    /// to zero when signed out (no account graph to show).
+    private func loadFollowCounts() async {
+        guard auth.isSignedIn, let username = auth.username, !username.isEmpty else {
+            followCounts = .zero
+            return
+        }
+        followCounts = await auth.followCounts(for: username)
     }
 
     // MARK: - Profile photo
