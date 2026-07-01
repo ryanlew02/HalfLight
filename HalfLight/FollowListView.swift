@@ -13,6 +13,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// Which list a follow screen opens on (and which the segmented control shows).
 enum FollowTab: Hashable {
@@ -26,6 +27,9 @@ struct FollowListView: View {
     let displayName: String
 
     @Environment(AuthService.self) private var auth
+    @Environment(DreamStore.self) private var store
+    /// Everyone the signed-in dreamer follows, so each row can show the right state.
+    @Query private var follows: [Follow]
     @State private var tab: FollowTab
     @State private var followers: [FollowProfile] = []
     @State private var following: [FollowProfile] = []
@@ -39,6 +43,17 @@ struct FollowListView: View {
 
     private var rows: [FollowProfile] {
         tab == .followers ? followers : following
+    }
+
+    /// The lowercased handles the signed-in dreamer currently follows.
+    private var followedHandles: Set<String> {
+        Set(follows.map { $0.username.lowercased() })
+    }
+
+    /// The signed-in dreamer's own handle, so they get no follow button on their row.
+    private var myHandle: String {
+        (auth.username ?? UserDefaults.standard.string(forKey: "userUsername") ?? "")
+            .lowercased()
     }
 
     var body: some View {
@@ -83,19 +98,21 @@ struct FollowListView: View {
         } else {
             VStack(spacing: DreamMetric.md) {
                 ForEach(rows) { person in
-                    NavigationLink {
-                        PublicProfileView(author: FeedAuthor(
-                            username: person.username,
-                            name: person.name,
-                            photo: person.photo
-                        ))
-                    } label: {
-                        FollowRow(person: person)
-                    }
-                    .buttonStyle(.plain)
+                    FollowRow(
+                        person: person,
+                        isFollowing: followedHandles.contains(person.username.lowercased()),
+                        isMe: person.username.lowercased() == myHandle && !myHandle.isEmpty,
+                        onToggleFollow: { toggleFollow(person) }
+                    )
                 }
             }
         }
+    }
+
+    private func toggleFollow(_ person: FollowProfile) {
+        let willFollow = !followedHandles.contains(person.username.lowercased())
+        store.setFollow(username: person.username, following: willFollow)
+        SoundManager.shared.play(willFollow ? .shimmer : .tap)
     }
 
     private func load() async {
@@ -107,33 +124,80 @@ struct FollowListView: View {
     }
 }
 
-/// One dreamer in a follow list: avatar, name, and @handle.
+/// One dreamer in a follow list: a tappable avatar/name area that opens their
+/// public profile, plus a follow / following toggle (hidden on your own row).
 private struct FollowRow: View {
     let person: FollowProfile
+    let isFollowing: Bool
+    let isMe: Bool
+    let onToggleFollow: () -> Void
 
     var body: some View {
         HStack(spacing: DreamMetric.md) {
-            FeedAvatar(photoData: person.photo, name: person.name, size: 44)
+            NavigationLink {
+                PublicProfileView(author: FeedAuthor(
+                    username: person.username,
+                    name: person.name,
+                    photo: person.photo
+                ))
+            } label: {
+                HStack(spacing: DreamMetric.md) {
+                    FeedAvatar(photoData: person.photo, name: person.name, size: 44)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(person.name.isEmpty ? "@\(person.username)" : person.name)
-                    .font(.dreamBody(15, .semibold))
-                    .foregroundStyle(Color.dreamText)
-                    .lineLimit(1)
-                Text("@\(person.username)")
-                    .font(.dreamCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(person.name.isEmpty ? "@\(person.username)" : person.name)
+                            .font(.dreamBody(15, .semibold))
+                            .foregroundStyle(Color.dreamText)
+                            .lineLimit(1)
+                        Text("@\(person.username)")
+                            .font(.dreamCaption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.dreamCaption)
-                .foregroundStyle(.secondary)
+            if !isMe {
+                FollowPillButton(isFollowing: isFollowing, action: onToggleFollow)
+            }
         }
         .padding(DreamMetric.lg)
         .dreamCard()
+    }
+}
+
+/// A compact follow / following pill used inside a follow-list row.
+private struct FollowPillButton: View {
+    let isFollowing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if isFollowing {
+                    Image(systemName: "checkmark")
+                }
+                Text(isFollowing ? "Following" : "Follow")
+            }
+            .font(.dreamGrotesk(13, .semibold))
+            .foregroundStyle(isFollowing ? Color.dreamText.opacity(0.7) : Color.dreamOnPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background {
+                if isFollowing {
+                    Capsule()
+                        .fill(Color.dreamText.opacity(0.04))
+                        .overlay(Capsule().strokeBorder(Color.dreamText.opacity(0.12), lineWidth: 1))
+                } else {
+                    Capsule().fill(Color.dreamPrimary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
