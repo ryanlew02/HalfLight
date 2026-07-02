@@ -45,6 +45,13 @@ extension Color {
     /// Foreground used on a solid `dreamPrimary` fill.
     static let dreamOnPrimary = Color(light: 0x3A3228, dark: 0x2E2008)
 
+    /// The moonlit rim on card outlines — the tone the top edge of a surface
+    /// takes where it catches the sky's glow (blush by day, pale gold by night).
+    static let dreamMoonRim = Color(light: 0xD99A85, dark: 0xF0C98F)
+    /// Card shadow tone — warm umber in light mode, deep night indigo in dark —
+    /// so depth feels atmospheric instead of neutral black.
+    static let dreamCardShadow = Color(light: 0x50402E, dark: 0x060512)
+
     // Capture CTA / "Surprise me" pill — a high-contrast fill that inverts
     // between modes (dark brown on light, amber on dark).
     static let dreamCTAFill = Color(light: 0x3A3228, dark: 0xE8A95C)

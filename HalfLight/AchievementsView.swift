@@ -182,9 +182,10 @@ struct AchievementBadge: View {
         .padding(DreamMetric.md)
         // A flat card (no large colored glow): the medallion's own halo already
         // marks a badge as earned, and dropping the big per-tile shadow keeps the
-        // grid smooth to scroll.
+        // grid smooth to scroll. Locked state reads from the muted medallion and
+        // secondary text — whole-tile fractional opacity would force an offscreen
+        // compositing pass per locked tile.
         .dreamCard()
-        .opacity(unlocked ? 1 : 0.85)
     }
 }
 
@@ -208,15 +209,17 @@ struct AchievementMedallion: View {
                 .fill(discFill)
                 .overlay(
                     // Top-down sheen so the disc reads as a lit, domed surface.
+                    // A plain white gradient at reduced opacity — a soft-light
+                    // blend mode here forced an offscreen render pass for every
+                    // medallion, which added up across a scrolling gridful.
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [.white.opacity(unlocked ? 0.45 : 0.10), .clear],
+                                colors: [.white.opacity(unlocked ? 0.28 : 0.06), .clear],
                                 startPoint: .top,
                                 endPoint: .center
                             )
                         )
-                        .blendMode(.softLight)
                 )
 
             Image(systemName: unlocked ? symbol : "lock.fill")

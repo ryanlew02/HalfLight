@@ -352,18 +352,26 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(22)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.heroRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: DreamMetric.heroRadius)
-                .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
-        )
+        .background { DreamCardFill(radius: DreamMetric.heroRadius) }
         .overlay(alignment: .topTrailing) {
             MoodOrb(tint: dream.mood.tint, diameter: 72)
                 .padding(.top, 12)
                 .padding(.trailing, 16)
         }
         .clipShape(RoundedRectangle(cornerRadius: DreamMetric.heroRadius))
-        .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 6)
+        // Added after the clip so it isn't cut off: a duplicate of the card shape,
+        // hidden behind the opaque fill, casts the shadow — blurring this flat
+        // shape is far cheaper than blurring the whole finished card.
+        .background {
+            RoundedRectangle(cornerRadius: DreamMetric.heroRadius)
+                .fill(Color.dreamSurface)
+                .shadow(color: Color.dreamCardShadow.opacity(0.1), radius: 12, x: 0, y: 6)
+        }
+        .overlay(DreamCardRim(radius: DreamMetric.heroRadius))
+        .overlay(alignment: .topTrailing) {
+            StarGlintView()
+                .offset(x: -28, y: -5.5)
+        }
     }
 
     private func tagTint(_ index: Int) -> Color {
@@ -458,11 +466,7 @@ struct HomeView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.tileRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: DreamMetric.tileRadius)
-                .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
-        )
+        .dreamCard(radius: DreamMetric.tileRadius)
     }
 
     // MARK: - Weekly quest preview
@@ -534,11 +538,8 @@ struct HomeView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.tileRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: DreamMetric.tileRadius)
-                .strokeBorder(quest.tint.opacity(0.45), lineWidth: 1)
-        )
+        .background { DreamCardFill(radius: DreamMetric.tileRadius) }
+        .overlay(DreamCardRim(radius: DreamMetric.tileRadius, tint: quest.tint))
         .shadow(color: quest.tint.opacity(0.25), radius: 10, y: 4)
     }
 
@@ -597,11 +598,7 @@ struct HomeView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.tileRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: DreamMetric.tileRadius)
-                .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
-        )
+        .dreamCard(radius: DreamMetric.tileRadius)
     }
 
     /// Claim a completed quest's XP: bank it and fire the reward animation.
@@ -653,17 +650,14 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 22)
             .padding(.vertical, 24)
-            .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.heroRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: DreamMetric.heroRadius)
-                    .strokeBorder(Color.dreamText.opacity(0.07), lineWidth: 1)
-            )
+            .background { DreamCardFill(radius: DreamMetric.heroRadius) }
             .overlay(alignment: .topTrailing) {
                 floatingOrbs
                     .padding(.top, -6)
                     .padding(.trailing, 2)
             }
             .clipShape(RoundedRectangle(cornerRadius: DreamMetric.heroRadius))
+            .overlay(DreamCardRim(radius: DreamMetric.heroRadius))
         }
         .buttonStyle(PressableTileStyle())
     }
@@ -720,11 +714,7 @@ struct HomeView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(22)
-                .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.heroRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: DreamMetric.heroRadius)
-                        .strokeBorder(Color.dreamText.opacity(0.07), lineWidth: 1)
-                )
+                .dreamCard(radius: DreamMetric.heroRadius)
             }
             .buttonStyle(PressableTileStyle())
         }
@@ -768,11 +758,7 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(22)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: DreamMetric.heroRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: DreamMetric.heroRadius)
-                .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
-        )
+        .dreamCard(radius: DreamMetric.heroRadius, starred: true)
     }
 
     // MARK: - Stats helpers (streak)
@@ -935,17 +921,20 @@ struct MoodOrb: View {
     var body: some View {
         ZStack {
             if bloom {
+                // The radial fall-off alone reads as the bloom — the `.blur` that
+                // used to sit on top was a live Gaussian pass per orb (one per
+                // feed card) that cost real frame time while barely changing an
+                // already-soft gradient.
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: [tint.opacity(0.40), .clear],
+                            colors: [tint.opacity(0.38), .clear],
                             center: .center,
                             startRadius: 0,
-                            endRadius: diameter * 0.82
+                            endRadius: diameter * 0.75
                         )
                     )
                     .frame(width: diameter * 1.5, height: diameter * 1.5)
-                    .blur(radius: 6)
             }
 
             Circle()

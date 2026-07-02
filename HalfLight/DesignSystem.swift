@@ -97,31 +97,137 @@ extension View {
 
 // MARK: - Elevated surface
 
-/// The card treatment for the editorial / celestial system: a flat filled
-/// surface with a hairline inset stroke and only a whisper of ambient shadow —
-/// depth comes from the inset edge, not a drop-shadow bloom. `glow` keeps a soft
-/// colored halo available for elements that should feel lit from within.
+/// The half-lit card: every screen hangs under the moonglow at the crown of the
+/// sky, so surfaces behave like objects sitting in that light. The outline is
+/// brightest along the top rim where it catches the glow and falls away into
+/// shadow toward the bottom; a faint wash of the same light settles on the
+/// card's upper face. Depth comes from that lighting, not a gray hairline.
+
+/// The moonlit rim stroke. Pass `tint` to let an accent color carry the light
+/// instead of the default moon tone (used for claimable-quest cards).
+struct DreamCardRim: View {
+    var radius: CGFloat
+    var tint: Color? = nil
+
+    var body: some View {
+        let lit = tint ?? Color.dreamMoonRim
+        let fade = tint ?? Color.dreamText
+        RoundedRectangle(cornerRadius: radius)
+            .strokeBorder(
+                LinearGradient(
+                    stops: [
+                        .init(color: lit.opacity(tint == nil ? 0.55 : 0.7), location: 0),
+                        .init(color: lit.opacity(tint == nil ? 0.16 : 0.4), location: 0.25),
+                        .init(color: fade.opacity(tint == nil ? 0.07 : 0.28), location: 0.6),
+                        .init(color: fade.opacity(tint == nil ? 0.05 : 0.22), location: 1),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                ),
+                lineWidth: 1
+            )
+    }
+}
+
+/// The card fill: the flat surface tone with a whisper of moonlight settling
+/// across its upper face, echoing the sky's top-anchored glow.
+struct DreamCardFill: View {
+    var radius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius)
+            .fill(Color.dreamSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: radius)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.dreamMoonRim.opacity(0.07), location: 0),
+                                .init(color: .clear, location: 0.45),
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+            )
+    }
+}
+
+/// A tiny four-point star, the same species as the backdrop's starfield —
+/// perched on a hero card's rim like a star that came to rest there.
+struct StarGlint: Shape {
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        let r = min(rect.width, rect.height) / 2
+        let pull: CGFloat = 0.18 // how far the inward curves bow toward center
+        var path = Path()
+        path.move(to: CGPoint(x: c.x, y: c.y - r))
+        path.addQuadCurve(to: CGPoint(x: c.x + r, y: c.y),
+                          control: CGPoint(x: c.x + r * pull, y: c.y - r * pull))
+        path.addQuadCurve(to: CGPoint(x: c.x, y: c.y + r),
+                          control: CGPoint(x: c.x + r * pull, y: c.y + r * pull))
+        path.addQuadCurve(to: CGPoint(x: c.x - r, y: c.y),
+                          control: CGPoint(x: c.x - r * pull, y: c.y + r * pull))
+        path.addQuadCurve(to: CGPoint(x: c.x, y: c.y - r),
+                          control: CGPoint(x: c.x - r * pull, y: c.y - r * pull))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The glint dressed for the rim: moon-toned with a soft halo.
+struct StarGlintView: View {
+    var size: CGFloat = 11
+
+    var body: some View {
+        StarGlint()
+            .fill(Color.dreamMoonRim)
+            .frame(width: size, height: size)
+            .shadow(color: Color.dreamMoonRim.opacity(0.7), radius: 4)
+    }
+}
+
 struct DreamSurfaceModifier: ViewModifier {
     var radius: CGFloat = DreamMetric.cardRadius
     var glow: Color? = nil
+    var starred: Bool = false
 
     func body(content: Content) -> some View {
         content
-            .background(Color.dreamSurface, in: .rect(cornerRadius: radius))
-            .overlay(
-                RoundedRectangle(cornerRadius: radius)
-                    .strokeBorder(Color.dreamText.opacity(0.06), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 6)
-            .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.22), radius: 44, x: 0, y: 6)
+            .background {
+                // Shadows hang off the flat background shape, not the finished
+                // card: blurring a plain rounded rect is far cheaper than
+                // re-rasterizing the whole subtree (text, gradients, rim) for
+                // the blur, which is what stutters a gridful of cards. The
+                // glow shadow only exists when a glow is asked for — a clear
+                // 44pt blur is not guaranteed to be free.
+                if let glow {
+                    DreamCardFill(radius: radius)
+                        .shadow(color: Color.dreamCardShadow.opacity(0.1), radius: 12, x: 0, y: 6)
+                        .shadow(color: glow.opacity(0.22), radius: 44, x: 0, y: 6)
+                } else {
+                    DreamCardFill(radius: radius)
+                        .shadow(color: Color.dreamCardShadow.opacity(0.1), radius: 12, x: 0, y: 6)
+                }
+            }
+            .overlay(DreamCardRim(radius: radius))
+            .overlay(alignment: .topTrailing) {
+                if starred {
+                    StarGlintView()
+                        .offset(x: -28, y: -5.5)
+                }
+            }
     }
 }
 
 extension View {
-    /// Apply the standard elevated card surface. Pass `glow` to add a soft
-    /// colored halo (used to make the latest-dream hero feel lit from within).
-    func dreamCard(radius: CGFloat = DreamMetric.cardRadius, glow: Color? = nil) -> some View {
-        modifier(DreamSurfaceModifier(radius: radius, glow: glow))
+    /// Apply the standard half-lit card surface. Pass `glow` to add a soft
+    /// colored halo (used to make the current-level card feel lit from within);
+    /// pass `starred: true` to perch a star glint on the top rim of hero cards.
+    func dreamCard(
+        radius: CGFloat = DreamMetric.cardRadius,
+        glow: Color? = nil,
+        starred: Bool = false
+    ) -> some View {
+        modifier(DreamSurfaceModifier(radius: radius, glow: glow, starred: starred))
     }
 }
 

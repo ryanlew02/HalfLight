@@ -46,12 +46,16 @@ struct CustomTabBar: View {
                 .foregroundStyle(isSelected ? Color.dreamPrimary : .secondary)
                 .scaleEffect(isSelected ? 1.05 : 1.0)
                 // Soft halo behind the active icon plus a colored glow on it.
+                // A radial gradient rather than a blurred circle: the halo's
+                // opacity animates on every tab switch, and a gradient fade
+                // composites for free where a blur would re-render each frame.
                 .background {
-                    Circle()
-                        .fill(Color.dreamPrimary)
-                        .frame(width: 34, height: 34)
-                        .blur(radius: 12)
-                        .opacity(isSelected ? 0.4 : 0)
+                    RadialGradient(
+                        colors: [Color.dreamPrimary.opacity(0.45), .clear],
+                        center: .center, startRadius: 2, endRadius: 29
+                    )
+                    .frame(width: 58, height: 58)
+                    .opacity(isSelected ? 1 : 0)
                 }
                 .shadow(color: Color.dreamPrimary.opacity(isSelected ? 0.55 : 0), radius: 6)
                 .frame(maxWidth: .infinity)

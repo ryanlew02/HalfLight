@@ -106,10 +106,22 @@ private struct LucidSectionHeader: View {
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
+                // The active badge breathes via a gradient halo whose opacity
+                // animates — animating the shadow's radius instead (as before)
+                // re-ran the blur every frame, forever, which dragged scrolling
+                // on this screen.
+                if isActive {
+                    RadialGradient(
+                        colors: [Color.dreamPrimary.opacity(0.5), .clear],
+                        center: .center, startRadius: 4, endRadius: 36
+                    )
+                    .frame(width: 72, height: 72)
+                    .opacity(glow ? 1 : 0.35)
+                }
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(badgeFill)
                     .frame(width: 42, height: 42)
-                    .shadow(color: shadowColor, radius: shadowRadius)
+                    .shadow(color: shadowColor, radius: 8)
                 Image(systemName: isUnlocked ? section.icon : "lock.fill")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(isUnlocked ? .white : .secondary)
@@ -154,11 +166,8 @@ private struct LucidSectionHeader: View {
     }
 
     private var shadowColor: Color {
-        guard isActive else { return Color.dreamPrimary.opacity(0) }
-        return Color.dreamPrimary.opacity(glow ? 0.85 : 0.4)
+        isActive ? Color.dreamPrimary.opacity(0.45) : Color.dreamPrimary.opacity(0)
     }
-
-    private var shadowRadius: CGFloat { glow ? 16 : 8 }
 
     private var badgeFill: AnyShapeStyle {
         isUnlocked

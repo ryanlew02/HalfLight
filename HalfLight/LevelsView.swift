@@ -139,7 +139,7 @@ struct LevelsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(DreamMetric.lg)
-        .dreamCard(glow: isCurrent ? Color.dreamPrimary : nil)
+        .dreamCard(glow: isCurrent ? Color.dreamPrimary : nil, starred: isCurrent)
         .opacity(unlocked ? 1 : 0.7)
     }
 }

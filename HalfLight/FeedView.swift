@@ -46,6 +46,12 @@ struct FeedView: View {
     @State private var orderedIDs: [UUID] = []
     /// Posts whose impression has already been counted this session.
     @State private var impressed: Set<UUID> = []
+    /// Impressions seen but not yet written. `recordView`'s synchronous save (and
+    /// the query invalidation it triggers) would rebuild the feed mid-swipe, so
+    /// impressions buffer here until the paging scroll settles.
+    @State private var pendingImpressions: [UUID] = []
+    /// Whether the feed's paging scroll is currently at rest.
+    @State private var scrollIsSettled = true
     /// Authors' profile photos fetched by @handle, keyed by lowercased username, so
     /// other dreamers show real avatars instead of initials. Own posts already carry
     /// a fresh snapshot; this fills in everyone else.
@@ -81,7 +87,18 @@ struct FeedView: View {
     /// store so it's mirrored to Supabase.
     private func recordImpression(_ post: FeedPost) {
         guard impressed.insert(post.id).inserted else { return }
-        store.recordView(post)
+        pendingImpressions.append(post.id)
+        if scrollIsSettled { flushImpressions() }
+    }
+
+    /// Land the buffered view counts once no swipe animation is in flight.
+    private func flushImpressions() {
+        guard !pendingImpressions.isEmpty else { return }
+        let byID = Dictionary(posts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for id in pendingImpressions {
+            if let post = byID[id] { store.recordView(post) }
+        }
+        pendingImpressions.removeAll()
     }
 
     /// The photo to render for a post's author: the snapshot on the post (fresh for
@@ -235,6 +252,10 @@ struct FeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
+        .onScrollPhaseChange { _, newPhase in
+            scrollIsSettled = newPhase == .idle
+            if newPhase == .idle { flushImpressions() }
+        }
         .tabBarClearance()
     }
 
