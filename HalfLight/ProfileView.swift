@@ -43,16 +43,17 @@ struct ProfileView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    header
-                    if auth.isSignedIn, let username = auth.username, !username.isEmpty {
-                        FollowStatsBar(username: username, displayName: userName, counts: followCounts)
-                            .frame(maxWidth: .infinity)
+                    // The identity block: avatar + name header, then the bio and
+                    // follower counts as plain left-aligned rows beneath it, so
+                    // the whole thing reads as one unit above the cards.
+                    VStack(alignment: .leading, spacing: DreamMetric.md) {
+                        header
+                        bioText
+                        followStatsRow
                     }
-                    // Signed out: sign-in prompt sits right under the header, above
-                    // Progress and Top themes. Signed in: the bio takes its place
-                    // (accountCard renders nothing, bioCard renders nothing if empty).
+                    // Signed out: the sign-in prompt sits right under the header,
+                    // above Progress and Top themes (renders nothing signed in).
                     accountCard
-                    bioCard
                     progressCard
                     themesCard
                 }
@@ -118,9 +119,13 @@ struct ProfileView: View {
                         .font(.dreamBody(14, .semibold))
                         .foregroundStyle(Color.dreamPrimary)
                 }
-                Text(auth.isSignedIn ? (auth.email ?? "Signed in") : "Not signed in")
-                    .font(.dreamBody(13, .medium))
-                    .foregroundStyle(.secondary)
+                // The email lives in Settings, not here. Signed out there's no
+                // @username either, so show a status line in its place.
+                if !auth.isSignedIn {
+                    Text("Not signed in")
+                        .font(.dreamBody(13, .medium))
+                        .foregroundStyle(.secondary)
+                }
 
                 rankBadge
                     .padding(.top, 6)
@@ -183,31 +188,54 @@ struct ProfileView: View {
             }
     }
 
-    // MARK: - Bio
+    // MARK: - Bio & follow stats
 
-    /// The dreamer's bio, shown only once they've written one. Editing lives in
-    /// the header's Edit Profile icon.
+    /// The dreamer's bio, shown as plain text under the header once they've
+    /// written one. Editing lives in the header's Edit Profile icon.
     @ViewBuilder
-    private var bioCard: some View {
-        if let bio = auth.bio, !bio.isEmpty {
-            VStack(alignment: .leading, spacing: DreamMetric.sm) {
-                HStack(spacing: DreamMetric.sm) {
-                    Image(systemName: "text.quote")
-                        .foregroundStyle(Color.dreamPrimary)
-                    Text("Bio")
-                        .font(.dreamSectionHeader)
-                }
-
-                Text(bio)
-                    .font(.dreamBody(15))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(DreamMetric.lg)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .dreamCard()
+    private var bioText: some View {
+        if auth.isSignedIn, let bio = auth.bio, !bio.isEmpty {
+            Text(bio)
+                .font(.dreamBody(15))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Tappable "N Followers   N Following" counts, inline under the bio like a
+    /// standard social profile. Left-aligned to match the rest of the screen —
+    /// the centered `FollowStatsBar` stays on the public profile, whose header
+    /// is centered.
+    @ViewBuilder
+    private var followStatsRow: some View {
+        if auth.isSignedIn, let username = auth.username, !username.isEmpty {
+            HStack(spacing: DreamMetric.xl) {
+                followStat(count: followCounts.followers, label: "Followers",
+                           username: username, tab: .followers)
+                followStat(count: followCounts.following, label: "Following",
+                           username: username, tab: .following)
+            }
+        }
+    }
+
+    private func followStat(
+        count: Int, label: LocalizedStringKey, username: String, tab: FollowTab
+    ) -> some View {
+        NavigationLink {
+            FollowListView(username: username, displayName: userName, initialTab: tab)
+        } label: {
+            HStack(spacing: 5) {
+                Text("\(count)")
+                    .font(.dreamBody(15, .bold))
+                    .foregroundStyle(Color.dreamText)
+                Text(label)
+                    .font(.dreamBody(14, .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Progress

@@ -226,22 +226,31 @@ struct AchievementMedallion: View {
                 .font(.system(size: size * 0.4, weight: .bold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(glyphFill)
-                .shadow(color: (unlocked && bloom) ? tint.opacity(0.55) : .clear,
-                        radius: size * 0.03, y: size * 0.02)
         }
         .frame(width: size, height: size)
         // Framing ring just inside the edge.
         .overlay(
             Circle().strokeBorder(ringFill, lineWidth: max(1.5, size * 0.045))
         )
-        // Soft colored bloom behind unlocked badges. A circular shadow gives the
-        // same halo as the old blurred-circle background but is far cheaper to
-        // composite while scrolling a gridful of medallions.
-        .shadow(
-            color: (unlocked && bloom) ? tint.opacity(0.5) : .clear,
-            radius: size * 0.18,
-            y: size * 0.03
-        )
+        // Soft colored bloom behind unlocked badges. A radial-gradient disc, not
+        // a `.shadow`: shadows rasterize the whole medallion offscreen and blur
+        // it, and two of those per tile is what made the gallery grid stutter as
+        // rows scrolled in. A gradient fill composites directly with no blur.
+        .background {
+            if unlocked && bloom {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [tint.opacity(0.45), tint.opacity(0)],
+                            center: .center,
+                            startRadius: size * 0.3,
+                            endRadius: size * 0.85
+                        )
+                    )
+                    .frame(width: size * 1.7, height: size * 1.7)
+                    .offset(y: size * 0.03)
+            }
+        }
     }
 
     private var discFill: AnyShapeStyle {

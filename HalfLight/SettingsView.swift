@@ -117,6 +117,7 @@ struct SettingsView: View {
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Settings")
@@ -259,6 +260,7 @@ struct NameSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Name")
@@ -305,6 +307,7 @@ struct AppearanceSettingsView: View {
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Appearance")
@@ -355,6 +358,7 @@ struct NotificationSettingsView: View {
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Notifications")
@@ -385,6 +389,7 @@ struct SoundSettingsView: View {
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Sound & Haptics")
@@ -431,6 +436,7 @@ struct LanguageSettingsView: View {
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Language")
@@ -541,6 +547,7 @@ struct AccountSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Account")
@@ -653,6 +660,7 @@ struct ChangePasswordView: View {
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Change Password")
@@ -744,6 +752,7 @@ struct UsernameSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("Username")
@@ -807,6 +816,7 @@ struct AboutSettingsView: View {
             .listRowBackground(Color.dreamSurface)
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .tint(.dreamPrimary)
         .navigationTitle("About")

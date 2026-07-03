@@ -25,6 +25,7 @@ struct EditProfileView: View {
             errorSection
         }
         .scrollContentBackground(.hidden)
+        .tabBarClearance()
         .background { DreamBackground() }
         .navigationTitle("Edit Profile")
         #if os(iOS)

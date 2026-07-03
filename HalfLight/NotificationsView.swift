@@ -67,6 +67,7 @@ struct NotificationsView: View {
             }
             .padding(DreamMetric.screen)
         }
+        .tabBarClearance()
     }
 
     private func row(_ note: AppNotification) -> some View {

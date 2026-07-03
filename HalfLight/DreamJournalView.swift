@@ -22,6 +22,21 @@ struct DreamJournalView: View {
     /// When on, search matches by meaning too — related words (synonyms) and
     /// whole-sentence semantic similarity. Persisted so the preference sticks.
     @AppStorage("journalSmartMatch") private var smartMatch = true
+    /// Whether the library renders as the scrolling list or the month calendar.
+    /// Persisted so the journal reopens the way the dreamer left it.
+    @AppStorage("journalViewMode") private var viewMode: ViewMode = .list
+
+    /// The two ways of browsing the library.
+    enum ViewMode: String {
+        case list, calendar
+    }
+
+    /// The month the calendar is showing (first of the month). Opens on the
+    /// present; the arrows and the month/year wheels move it.
+    @State private var displayedMonth =
+        Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+    /// Whether the month/year wheels are expanded under the calendar header.
+    @State private var showingMonthPicker = false
     /// Caches a semantic vector per dream for "search by vibe" ranking.
     @State private var semanticIndex = DreamSemanticIndex()
 
@@ -66,7 +81,9 @@ struct DreamJournalView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 12)
 
-                if !dreams.isEmpty {
+                // Search and mood filters only apply to the list; the calendar
+                // always shows the whole library.
+                if !dreams.isEmpty && viewMode == .list {
                     searchBar
                         .padding(.horizontal, 20)
                         .padding(.bottom, 12)
@@ -80,6 +97,8 @@ struct DreamJournalView: View {
                 Group {
                     if dreams.isEmpty {
                         emptyState
+                    } else if viewMode == .calendar {
+                        calendarView
                     } else if filteredDreams.isEmpty {
                         noResults
                     } else {
@@ -143,7 +162,10 @@ struct DreamJournalView: View {
                 .font(.dreamTitle)
             Spacer()
             if !dreams.isEmpty {
-                sortMenu
+                viewModeButton
+                if viewMode == .list {
+                    sortMenu
+                }
             }
             Button {
                 SoundManager.shared.play(.tap)
@@ -249,6 +271,22 @@ struct DreamJournalView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.dreamText.opacity(0.08), lineWidth: 1)
         )
+    }
+
+    /// Flips the library between the list and the month calendar. Sits next to
+    /// the sort menu and borrows its circular treatment.
+    private var viewModeButton: some View {
+        Button {
+            SoundManager.shared.play(.tap)
+            viewMode = viewMode == .list ? .calendar : .list
+        } label: {
+            Image(systemName: viewMode == .list ? "calendar" : "list.bullet")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.dreamPrimary)
+                .frame(width: 32, height: 32)
+                .background(Color.dreamPrimary.opacity(0.12), in: .circle)
+        }
+        .accessibilityLabel(viewMode == .list ? "Show calendar" : "Show list")
     }
 
     private var sortMenu: some View {
@@ -363,6 +401,207 @@ struct DreamJournalView: View {
             return "No dreams match “\(trimmed)”."
         }
         return "No dreams in the moods you've selected."
+    }
+
+    // MARK: - Calendar
+
+    /// Every day (start-of-day) that has at least one journaled dream — drives
+    /// the dots and which days tap through to their dreams.
+    private var dreamDays: Set<Date> {
+        let cal = Calendar.current
+        return Set(dreams.map { cal.startOfDay(for: $0.date) })
+    }
+
+    /// The first day of the earliest journaled dream's month — the calendar
+    /// can't page back past this.
+    private var firstCalendarMonth: Date {
+        let cal = Calendar.current
+        let earliest = dreams.map(\.date).min() ?? .now
+        return cal.dateInterval(of: .month, for: earliest)?.start ?? earliest
+    }
+
+    /// The first day of the latest month the calendar can page to — this month,
+    /// or a stray future-dated dream's month if one exists.
+    private var lastCalendarMonth: Date {
+        let cal = Calendar.current
+        let latest = max(.now, dreams.map(\.date).max() ?? .now)
+        return cal.dateInterval(of: .month, for: latest)?.start ?? latest
+    }
+
+    private func clampedToCalendarRange(_ month: Date) -> Date {
+        min(max(month, firstCalendarMonth), lastCalendarMonth)
+    }
+
+    private func stepMonth(by delta: Int) {
+        guard let next = Calendar.current.date(
+            byAdding: .month, value: delta, to: displayedMonth
+        ) else { return }
+        displayedMonth = clampedToCalendarRange(next)
+    }
+
+    private var calendarView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DreamMetric.md) {
+                monthNavigator
+
+                if showingMonthPicker {
+                    monthYearPicker
+                }
+
+                MonthCalendarGrid(
+                    monthStart: clampedToCalendarRange(displayedMonth),
+                    dreamDays: dreamDays
+                )
+            }
+            .padding(DreamMetric.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dreamCard()
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+        }
+        .tabBarClearance()
+    }
+
+    /// The calendar's header: arrows stepping a month at a time, with the month
+    /// title between them. Tapping the title toggles the month/year wheels.
+    private var monthNavigator: some View {
+        HStack {
+            monthArrow(
+                systemImage: "chevron.left",
+                disabled: displayedMonth <= firstCalendarMonth,
+                accessibilityLabel: "Previous month"
+            ) {
+                stepMonth(by: -1)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                SoundManager.shared.play(.tap)
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showingMonthPicker.toggle()
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
+                        .font(.dreamBody(16, .semibold))
+                        .foregroundStyle(Color.dreamText)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.dreamPrimary)
+                        .rotationEffect(.degrees(showingMonthPicker ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Choose month and year")
+
+            Spacer(minLength: 0)
+
+            monthArrow(
+                systemImage: "chevron.right",
+                disabled: displayedMonth >= lastCalendarMonth,
+                accessibilityLabel: "Next month"
+            ) {
+                stepMonth(by: 1)
+            }
+        }
+    }
+
+    private func monthArrow(
+        systemImage: String,
+        disabled: Bool,
+        accessibilityLabel: LocalizedStringKey,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            SoundManager.shared.play(.tap)
+            action()
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(disabled ? Color.dreamText.opacity(0.25) : Color.dreamPrimary)
+                .frame(width: 32, height: 32)
+                .background(
+                    Color.dreamPrimary.opacity(disabled ? 0.05 : 0.12),
+                    in: .circle
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// Side-by-side month and year wheels for jumping straight to a month,
+    /// revealed by tapping the navigator's title. Selections outside the
+    /// journal's span clamp back to the nearest covered month.
+    private var monthYearPicker: some View {
+        HStack(spacing: 0) {
+            Picker("Month", selection: displayedMonthComponentBinding(.month)) {
+                ForEach(1...12, id: \.self) { month in
+                    // Months outside the journal's span (older than the first
+                    // dream, or still in the future) stay listed so the wheel
+                    // doesn't reshuffle, but read clearly muted — picking one
+                    // clamps to the nearest covered month.
+                    Text(Calendar.current.standaloneMonthSymbols[month - 1])
+                        .foregroundStyle(
+                            isMonthPickable(month)
+                                ? Color.dreamText
+                                : Color.dreamText.opacity(0.25)
+                        )
+                        .tag(month)
+                }
+            }
+            Picker("Year", selection: displayedMonthComponentBinding(.year)) {
+                ForEach(calendarYears, id: \.self) { year in
+                    // Verbatim so the year renders without a grouping separator.
+                    Text(verbatim: "\(year)").tag(year)
+                }
+            }
+        }
+        #if os(iOS)
+        .pickerStyle(.wheel)
+        #endif
+        .frame(height: 130)
+    }
+
+    /// Whether the given month, in the year the wheel currently shows, falls
+    /// inside the journal's span — drives the muted look of unpickable months.
+    private func isMonthPickable(_ month: Int) -> Bool {
+        let cal = Calendar.current
+        var parts = cal.dateComponents([.year], from: displayedMonth)
+        parts.month = month
+        parts.day = 1
+        guard let candidate = cal.date(from: parts) else { return false }
+        return candidate >= firstCalendarMonth && candidate <= lastCalendarMonth
+    }
+
+    /// Every year the journal spans, for the year wheel.
+    private var calendarYears: [Int] {
+        let cal = Calendar.current
+        let first = cal.component(.year, from: firstCalendarMonth)
+        let last = cal.component(.year, from: lastCalendarMonth)
+        return Array(first...last)
+    }
+
+    /// A binding onto the displayed month's `.month` or `.year` component;
+    /// setting it rebuilds the date and clamps it into the journal's span.
+    private func displayedMonthComponentBinding(_ component: Calendar.Component) -> Binding<Int> {
+        Binding(
+            get: { Calendar.current.component(component, from: displayedMonth) },
+            set: { newValue in
+                let cal = Calendar.current
+                var parts = cal.dateComponents([.year, .month], from: displayedMonth)
+                switch component {
+                case .month: parts.month = newValue
+                case .year: parts.year = newValue
+                default: return
+                }
+                parts.day = 1
+                guard let picked = cal.date(from: parts) else { return }
+                displayedMonth = clampedToCalendarRange(picked)
+            }
+        )
     }
 
     // MARK: - Library
@@ -489,11 +728,135 @@ struct DreamCard: View {
         }
         .padding(DreamMetric.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.dreamSurface, in: .rect(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(dream.mood.tint.opacity(0.25), lineWidth: 1)
-        )
+        // The shared half-lit card surface, same as every other screen. The
+        // mood's color still reads from the label and tag capsules.
+        .dreamCard()
+    }
+}
+
+/// One month of the journal calendar: a locale-aware weekday header and the day
+/// grid. Days with a journaled dream carry a dot and tap through to that day's
+/// dreams; today reads in the accent color. The title and card surface live in
+/// the journal's month navigator, which pages this grid month by month.
+private struct MonthCalendarGrid: View {
+    let monthStart: Date
+    /// Start-of-day dates that have at least one dream.
+    let dreamDays: Set<Date>
+
+    private let calendar = Calendar.current
+    private let columns = Array(
+        repeating: GridItem(.flexible(), spacing: 0),
+        count: 7
+    )
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DreamMetric.md) {
+            LazyVGrid(columns: columns, spacing: DreamMetric.xs) {
+                ForEach(weekdaySymbols.indices, id: \.self) { index in
+                    Text(weekdaySymbols[index])
+                        .font(.dreamBody(11, .semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(Array(dayCells.enumerated()), id: \.offset) { _, day in
+                    if let day {
+                        dayCell(day)
+                    } else {
+                        // Leading blank before the month's first weekday.
+                        Color.clear.frame(height: 36)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Single-letter weekday labels, rotated so the row starts on the locale's
+    /// first weekday (Sunday in the US, Monday most elsewhere).
+    private var weekdaySymbols: [String] {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        let shift = calendar.firstWeekday - 1
+        return Array(symbols[shift...]) + Array(symbols[..<shift])
+    }
+
+    /// The month's days padded with `nil` blanks so day 1 lands on its weekday.
+    private var dayCells: [Date?] {
+        guard let dayRange = calendar.range(of: .day, in: .month, for: monthStart) else {
+            return []
+        }
+        let firstWeekday = calendar.component(.weekday, from: monthStart)
+        let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
+        var cells: [Date?] = Array(repeating: nil, count: leadingBlanks)
+        for day in dayRange {
+            cells.append(calendar.date(byAdding: .day, value: day - 1, to: monthStart))
+        }
+        return cells
+    }
+
+    @ViewBuilder
+    private func dayCell(_ day: Date) -> some View {
+        let hasDream = dreamDays.contains(day)
+        let isToday = calendar.isDateInToday(day)
+        let label = VStack(spacing: 3) {
+            Text("\(calendar.component(.day, from: day))")
+                .font(.dreamBody(13, isToday || hasDream ? .semibold : .regular).monospacedDigit())
+                .foregroundStyle(
+                    isToday
+                        ? Color.dreamPrimary
+                        : Color.dreamText.opacity(hasDream ? 1 : 0.45)
+                )
+            Circle()
+                .fill(hasDream ? Color.dreamPrimary : .clear)
+                .frame(width: 5, height: 5)
+        }
+        .frame(maxWidth: .infinity, minHeight: 36)
+        .contentShape(Rectangle())
+
+        if hasDream {
+            NavigationLink {
+                DayDreamsView(day: day)
+            } label: {
+                label
+            }
+            .buttonStyle(.plain)
+        } else {
+            label
+        }
+    }
+}
+
+/// The dreams journaled on a single day, reached by tapping a dotted day on the
+/// journal calendar.
+struct DayDreamsView: View {
+    /// The day's start-of-day date.
+    let day: Date
+
+    @Query(sort: \Dream.date, order: .reverse) private var dreams: [Dream]
+
+    private var matching: [Dream] {
+        dreams.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                ForEach(matching) { dream in
+                    NavigationLink {
+                        DreamDetailView(dream: dream)
+                    } label: {
+                        DreamCard(dream: dream)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+        }
+        .tabBarClearance()
+        .background { DreamBackground() }
+        .navigationTitle(day.formatted(date: .abbreviated, time: .omitted))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }
 
