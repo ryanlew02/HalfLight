@@ -140,18 +140,17 @@ struct HomeView: View {
     }
 
     private var greeting: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let salutation = Text("\(greetingText),\n")
+            .font(.dreamSerif(38))
+            .foregroundColor(.dreamText)
+        let name = Text(userName)
+            .font(.dreamSerif(38, italic: true))
+            .foregroundColor(.dreamNameAccent)
+        return VStack(alignment: .leading, spacing: 10) {
             Eyebrow(greetingEyebrow)
-            (
-                Text("\(greetingText),\n")
-                    .font(.dreamSerif(38))
-                    .foregroundColor(.dreamText)
-                + Text(userName)
-                    .font(.dreamSerif(38, italic: true))
-                    .foregroundColor(.dreamNameAccent)
-            )
-            .lineSpacing(2)
-            .fixedSize(horizontal: false, vertical: true)
+            Text("\(salutation)\(name)")
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

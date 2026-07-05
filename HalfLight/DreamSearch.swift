@@ -29,7 +29,9 @@ enum DreamSearch {
 
     /// Apple's English sentence embedding, for true semantic ("vibe") matching.
     /// `nil` when unavailable, in which case semantic ranking is skipped.
-    private static let sentenceEmbedding = NLEmbedding.sentenceEmbedding(for: .english)
+    /// `nonisolated(unsafe)`: read-only vector lookups, queried from the
+    /// background indexing task in `DreamSemanticIndex`.
+    private nonisolated(unsafe) static let sentenceEmbedding = NLEmbedding.sentenceEmbedding(for: .english)
 
     /// Break text into meaningful lowercase word tokens (filler words removed).
     static func tokenize(_ text: String) -> [String] {
@@ -104,7 +106,7 @@ enum DreamSearch {
 
     /// A sentence-embedding vector for free text, or `nil` if the model is
     /// unavailable or the text is empty.
-    static func sentenceVector(for text: String) -> [Double]? {
+    nonisolated static func sentenceVector(for text: String) -> [Double]? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let sentenceEmbedding else { return nil }
         return sentenceEmbedding.vector(for: trimmed)

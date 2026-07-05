@@ -12,7 +12,9 @@
 
 import Foundation
 
-enum DreamProgression {
+// Pure math over immutable constants — `nonisolated` so nonisolated code
+// (e.g. the off-main curriculum warm-up) can read it.
+nonisolated enum DreamProgression {
     /// Earned once per day the dreamer journals — whether they record a dream or
     /// mark the night as forgotten. A day can never be worth more than this, and
     /// the credit survives deleting the dream that earned it.

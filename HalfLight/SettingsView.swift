@@ -111,6 +111,16 @@ struct SettingsView: View {
                         SettingRow(title: "Support", systemImage: "envelope", value: nil)
                     }
                 }
+                if let termsURL = URL(string: "https://halflightdream.com/terms.html") {
+                    Link(destination: termsURL) {
+                        SettingRow(title: "Terms of Use", systemImage: "doc.text", value: nil)
+                    }
+                }
+                if let privacyURL = URL(string: "https://halflightdream.com/privacy.html") {
+                    Link(destination: privacyURL) {
+                        SettingRow(title: "Privacy Policy", systemImage: "hand.raised", value: nil)
+                    }
+                }
             } footer: {
                 Text("Questions or feedback? Reach us at support@thelanternhours.com.")
             }

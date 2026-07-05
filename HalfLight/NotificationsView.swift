@@ -128,15 +128,14 @@ struct NotificationsView: View {
 
     private func title(for note: AppNotification) -> some View {
         let verb = note.kind == .like ? " liked " : " commented on "
-        return (
-            Text(note.actorName.isEmpty ? "Someone" : note.actorName)
-                .font(.dreamBody(14, .semibold)).foregroundStyle(Color.dreamText)
-            + Text(verb)
-                .font(.dreamBody(14)).foregroundStyle(.secondary)
-            + Text("“\(note.postTitle)”")
-                .font(.dreamBody(14, .semibold)).foregroundStyle(Color.dreamText)
-        )
-        .fixedSize(horizontal: false, vertical: true)
+        let actor = Text(note.actorName.isEmpty ? "Someone" : note.actorName)
+            .font(.dreamBody(14, .semibold)).foregroundStyle(Color.dreamText)
+        let action = Text(verb)
+            .font(.dreamBody(14)).foregroundStyle(.secondary)
+        let post = Text("“\(note.postTitle)”")
+            .font(.dreamBody(14, .semibold)).foregroundStyle(Color.dreamText)
+        return Text("\(actor)\(action)\(post)")
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var emptyState: some View {

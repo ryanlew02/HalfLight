@@ -16,8 +16,8 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     /// The Apple-required legal links shown at the foot of the sheet.
-    private let termsURL = URL(string: "https://thelanternhours.com/terms")!
-    private let privacyURL = URL(string: "https://thelanternhours.com/privacy")!
+    private let termsURL = URL(string: "https://halflightdream.com/terms.html")!
+    private let privacyURL = URL(string: "https://halflightdream.com/privacy.html")!
 
     /// Which plan is selected to buy; defaults to the yearly (best value) plan.
     @State private var selectedYearly = true

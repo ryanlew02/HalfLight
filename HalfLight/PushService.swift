@@ -64,7 +64,7 @@ final class PushService {
             let user_id: String
             let platform: String
         }
-        try? await SupabaseClientProvider.shared
+        _ = try? await SupabaseClientProvider.shared
             .from("device_tokens")
             .upsert(Row(token: token, user_id: uid.uuidString, platform: "ios"), onConflict: "token")
             .execute()

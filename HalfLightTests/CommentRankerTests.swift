@@ -8,7 +8,7 @@
 //
 
 import XCTest
-@testable import HalfLight__AI_Dream_Journal_
+@testable import HalfLight
 
 @MainActor
 final class CommentRankerTests: XCTestCase {

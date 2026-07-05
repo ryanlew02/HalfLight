@@ -354,10 +354,10 @@ final class AuthService {
     func syncProgressState() async -> Bool {
         guard isSignedIn else { return false }
         guard let remote = await backend.fetchProgressState() else { return false }
-        let local = await ProgressState.local()
+        let local = ProgressState.local()
         let merged = local.merged(with: remote)
         let changedLocally = merged != local
-        if changedLocally { await merged.applyLocally() }
+        if changedLocally { merged.applyLocally() }
         if merged != remote { try? await backend.updateProgressState(merged) }
         return changedLocally
     }
@@ -371,7 +371,7 @@ final class AuthService {
         DayLog.skipped.clear()
         DayLog.journalCredit.clear()
         guard let remote = await backend.fetchProgressState() else { return true }
-        await remote.applyLocally()
+        remote.applyLocally()
         return true
     }
 

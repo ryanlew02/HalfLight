@@ -12,7 +12,9 @@
 import Foundation
 
 /// A single multiple-choice check inside a lesson.
-struct LucidQuiz {
+/// Pure data, `nonisolated` (as are the types below) so the curriculum can be
+/// built off the main actor — see the warm-up task in `MainTabView`.
+nonisolated struct LucidQuiz {
     let question: String
     let options: [String]
     /// Index into `options` of the correct answer.
@@ -22,7 +24,7 @@ struct LucidQuiz {
 }
 
 /// The full content of one lesson, rendered as a short stepped flow.
-struct LucidLessonContent: Identifiable {
+nonisolated struct LucidLessonContent: Identifiable {
     let id: String
     let title: String
     let icon: String
@@ -48,7 +50,7 @@ struct LucidLessonContent: Identifiable {
 }
 
 /// A group of lessons belonging to one method or theme.
-struct LucidSectionContent: Identifiable {
+nonisolated struct LucidSectionContent: Identifiable {
     let id: String
     let title: String
     let subtitle: String
@@ -57,7 +59,7 @@ struct LucidSectionContent: Identifiable {
 }
 
 /// The whole curriculum, top to bottom.
-enum LucidCurriculum {
+nonisolated enum LucidCurriculum {
     static let sections: [LucidSectionContent] = [
         foundations, dreamRecall, realityChecks, mild, wbtb, wild,
         stabilization, commonProblems, advanced

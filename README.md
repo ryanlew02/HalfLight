@@ -23,7 +23,10 @@ path — all backed up to the cloud when you sign in.
 - **Profile** — editable username (with a 30-day change cooldown), bio, and
   photo; a rank badge; and your most-repeated dream themes, drillable to the
   dreams that carry each one.
-- **Feed** — a placeholder tab for a future social feed of shared dreams.
+- **Feed** — share dreams publicly, like and comment, follow other dreamers,
+  and see followers/following on profiles. Posting, comments, follows, and
+  reports are rate-limited server-side; reported content is triaged by an
+  AI moderation function.
 - **Accounts** — email/password or Sign in with Apple via Supabase Auth.
   Dreams sync to a per-user, row-level-secured Postgres table. Accounts can be
   permanently deleted in-app (App Store Guideline 5.1.1(v)).
@@ -80,7 +83,8 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-There is currently no test target.
+Unit tests live in `HalfLightTests` (feed and comment ranking); run them with
+the same destination via `xcodebuild test -scheme HalfLight`.
 
 ## Backend setup
 

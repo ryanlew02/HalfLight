@@ -182,6 +182,15 @@ struct AuthView: View {
             .foregroundStyle(Color.dreamPrimary)
             .frame(maxWidth: .infinity)
             .disabled(auth.isWorking)
+
+            // The agreement that makes the terms binding (and that App Review
+            // looks for on apps with user-generated content).
+            Text("By continuing, you agree to our [Terms of Use](https://halflightdream.com/terms.html) and [Privacy Policy](https://halflightdream.com/privacy.html).")
+                .font(.dreamBody(12))
+                .foregroundStyle(.secondary)
+                .tint(Color.dreamPrimary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
         }
         // Clear any leftover availability state from a prior presentation.
         .onAppear { auth.resetUsernameStatus() }
