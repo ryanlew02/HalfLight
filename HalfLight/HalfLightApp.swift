@@ -209,10 +209,14 @@ private struct RootView: View {
         } message: {
             Text(mergePromptMessage)
         }
-        // Password-reset email link (halflight://reset-password?code=…) reopens
-        // the app here; redeem it and present the "set a new password" screen.
+        // Auth email links reopen the app here. Each handler ignores URLs that
+        // aren't its own: reset-password redeems a recovery session and presents
+        // the "set a new password" screen; confirm-email completes a sign-up.
         .onOpenURL { url in
-            Task { await auth.handlePasswordResetLink(url) }
+            Task {
+                await auth.handlePasswordResetLink(url)
+                await auth.handleEmailConfirmLink(url)
+            }
         }
         .fullScreenCover(isPresented: Binding(
             get: { auth.isPresentingPasswordReset },
@@ -236,6 +240,17 @@ private struct RootView: View {
             Button("OK", role: .cancel) { auth.passwordResetError = nil }
         } message: {
             Text(auth.passwordResetError ?? "")
+        }
+        .alert(
+            "Couldn't confirm your email",
+            isPresented: Binding(
+                get: { auth.emailConfirmError != nil },
+                set: { if !$0 { auth.emailConfirmError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { auth.emailConfirmError = nil }
+        } message: {
+            Text(auth.emailConfirmError ?? "")
         }
     }
 

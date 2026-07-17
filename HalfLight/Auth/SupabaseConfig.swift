@@ -45,6 +45,12 @@ enum SupabaseConfig {
     /// handled in `HalfLightApp` → `AuthService.handlePasswordResetLink`.
     static let passwordResetRedirect: URL? = URL(string: "halflight://reset-password")
 
+    /// Where the sign-up confirmation email sends the user: back into the app,
+    /// where the link is exchanged for a session (`AuthService.handleEmailConfirmLink`).
+    /// Must be listed under Supabase → Authentication → URL Configuration →
+    /// Redirect URLs, like the password-reset link above.
+    static let emailConfirmRedirect: URL? = URL(string: "halflight://confirm-email")
+
     /// True once real values have been filled in (used to surface a clear
     /// message instead of failing cryptically while still on placeholders).
     static var isConfigured: Bool {

@@ -16,6 +16,9 @@ import CryptoKit
 
 #if canImport(Supabase)
 import Supabase
+// Imported by name so the SDK's `AuthError` can be referenced as
+// `Auth.AuthError` (this file declares its own `AuthError`, which shadows it).
+import Auth
 #endif
 
 // MARK: - Backend abstraction
@@ -57,6 +60,18 @@ struct FollowCounts: Sendable, Equatable {
     static let zero = FollowCounts(followers: 0, following: 0)
 }
 
+/// The result of creating an account: the resolved email and whether the user
+/// must confirm it (via the emailed link) before a session exists.
+struct SignUpOutcome: Sendable {
+    let email: String
+    let needsEmailConfirmation: Bool
+    /// True when this email already had a never-confirmed account: Supabase
+    /// re-sends that account's confirmation link and silently ignores the newly
+    /// chosen username and password, so the app must tell the user the original
+    /// credentials still apply.
+    let isExistingUnconfirmedAccount: Bool
+}
+
 /// The outcome of fetching the signed-in user's profile. Distinguishes a brand
 /// new account that has no profile yet (`absent` → show the setup screen) from a
 /// transient failure such as being offline (`unreachable` → don't mistake a
@@ -79,7 +94,13 @@ protocol AuthBackend: Sendable {
         username: String,
         firstName: String,
         lastName: String
-    ) async throws -> String
+    ) async throws -> SignUpOutcome
+    /// Send a fresh sign-up confirmation email (the previous link may have
+    /// expired, or the first email never arrived).
+    func resendConfirmationEmail(_ email: String) async throws
+    /// Exchange a tapped sign-up confirmation deep link for the account's first
+    /// session, completing the sign-up.
+    func handleEmailConfirmLink(_ url: URL) async throws
     func signIn(email: String, password: String) async throws -> String
     func signInWithApple(idToken: String, nonce: String, email: String?) async throws -> String
     /// Create the profile row for the currently signed-in user (used to finish
@@ -136,8 +157,14 @@ protocol AuthBackend: Sendable {
 
 enum AuthError: LocalizedError {
     case message(String)
+    /// The account exists but its email hasn't been confirmed yet — the app
+    /// shows the "confirm your email" screen (with resend) instead of an error.
+    case emailNotConfirmed
     var errorDescription: String? {
-        switch self { case .message(let text): text }
+        switch self {
+        case .message(let text): text
+        case .emailNotConfirmed: "You haven't confirmed your email yet. Check your inbox for the confirmation link."
+        }
     }
 }
 
@@ -174,6 +201,15 @@ final class AuthService {
     private(set) var usernameStatus: UsernameStatus = .idle
     /// The in-flight debounced availability check, cancelled when the field changes.
     private var usernameCheckTask: Task<Void, Never>?
+
+    /// Set after a sign-up that requires email confirmation (and when signing
+    /// in with a still-unconfirmed account): the address the confirmation link
+    /// was sent to. Drives the "confirm your email" screen; cleared once the
+    /// link is redeemed or the user backs out to sign-in.
+    private(set) var pendingConfirmationEmail: String?
+    /// Surfaced (as an alert) when a tapped confirmation link couldn't be
+    /// redeemed (expired, already used, or opened on a different device).
+    var emailConfirmError: String?
 
     /// Set once a password-reset deep link has been exchanged for a recovery
     /// session; drives the modal "set a new password" screen.
@@ -531,6 +567,10 @@ final class AuthService {
         let handle = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Trim the address too: validation trims before checking, so an email
+        // with a stray space (e.g. from autocorrect) would pass the form but be
+        // rejected by the server if sent raw.
+        let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !first.isEmpty, !last.isEmpty else {
             errorMessage = "Please enter your first and last name."
@@ -544,7 +584,7 @@ final class AuthService {
             errorMessage = "Your password must be 8–20 characters and include an uppercase letter, a lowercase letter, and a number."
             return
         }
-        guard Self.isValidEmail(email) else {
+        guard Self.isValidEmail(address) else {
             errorMessage = "Please enter a valid email address."
             return
         }
@@ -554,21 +594,103 @@ final class AuthService {
                 errorMessage = "“\(handle)” is taken. Try another username."
                 return
             }
-            let resolvedEmail = try await backend.signUp(
-                email: email,
+            let outcome = try await backend.signUp(
+                email: address,
                 password: password,
                 username: handle,
                 firstName: first,
                 lastName: last
             )
+            if outcome.needsEmailConfirmation {
+                // The account exists but can't be used until the emailed link is
+                // tapped — park on the "confirm your email" screen. The signed-in
+                // state (and the profile hydrate) happens when the link comes
+                // back in via `handleEmailConfirmLink`.
+                pendingConfirmationEmail = outcome.email
+                if outcome.isExistingUnconfirmedAccount {
+                    // Supabase kept the original account and ignored the details
+                    // just entered — say so, or the user will try their new
+                    // password later and be locked out, confused.
+                    errorMessage = "This email already has an account that was never confirmed. We've re-sent its confirmation link — note that your original username and password still apply (you can reset the password if you've forgotten it)."
+                }
+                return
+            }
             persistProfile(username: handle, firstName: first, lastName: last)
-            self.email = resolvedEmail
+            self.email = outcome.email
             self.provider = .email
             // A brand-new account: any on-device guest dreams are adopted silently.
             lastEntry = .signedUp
             status = .signedIn
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Send a fresh confirmation email to the pending address (the first one
+    /// may have expired or never arrived).
+    func resendConfirmation() async {
+        guard let email = pendingConfirmationEmail else { return }
+        isWorking = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isWorking = false }
+        do {
+            try await backend.resendConfirmationEmail(email)
+            infoMessage = "We've sent a new confirmation link to \(email)."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Leave the "confirm your email" screen and return to the sign-in form
+    /// (e.g. to retry with a different address).
+    func cancelPendingConfirmation() {
+        pendingConfirmationEmail = nil
+        errorMessage = nil
+        infoMessage = nil
+    }
+
+    /// Whether a URL is our sign-up confirmation deep link (halflight://confirm-email).
+    func isEmailConfirmLink(_ url: URL) -> Bool {
+        url.scheme == "halflight" && url.host == "confirm-email"
+    }
+
+    /// Handle a tapped sign-up confirmation link: exchange it for the account's
+    /// first session and bring the app to the signed-in state. The profile row
+    /// already exists (created server-side at sign-up), so this hydrates it
+    /// before exposing the signed-in state. Ignores unrelated URLs.
+    func handleEmailConfirmLink(_ url: URL) async {
+        guard isEmailConfirmLink(url) else { return }
+        // A second tap on an already-redeemed link (or a tap while signed in)
+        // would fail the exchange and pop a misleading "link expired" alert
+        // over a perfectly good session — there's nothing to confirm, so bail.
+        guard !isSignedIn else { return }
+        isWorking = true
+        errorMessage = nil
+        emailConfirmError = nil
+        defer { isWorking = false }
+        do {
+            try await backend.handleEmailConfirmLink(url)
+            self.email = await backend.currentEmail()
+            self.provider = .email
+            pendingConfirmationEmail = nil
+            // Pull the profile (username, name) before exposing the signed-in
+            // state, mirroring `perform`, so the setup gate never misfires.
+            let outcome = await hydrateProfileIfNeeded()
+            if case .unreachable = outcome, (username?.isEmpty ?? true) {
+                try? await backend.signOut()
+                self.email = nil
+                self.provider = .unknown
+                emailConfirmError = "Couldn't reach the server. Check your connection and try again."
+                return
+            }
+            // A confirmation link only ever completes a brand-new account, so
+            // any on-device guest dreams are adopted silently.
+            lastEntry = .signedUp
+            status = .signedIn
+            await hydrateAvatarIfNeeded()
+        } catch {
+            emailConfirmError = error.localizedDescription
         }
     }
 
@@ -642,9 +764,17 @@ final class AuthService {
     }
 
     func signIn(email: String, password: String) async {
+        // Trimmed for the same reason as sign-up: a stray space passes the
+        // form's validation (which trims) but the server rejects it raw.
+        let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
         // `perform` hydrates the profile + photo before flipping to signed-in, so a
         // new device shows the right account immediately (no false setup prompt).
-        await perform(provider: .email) { try await self.backend.signIn(email: email, password: password) }
+        let error = await perform(provider: .email) { try await self.backend.signIn(email: address, password: password) }
+        // An account that never confirmed its email can't sign in — show the
+        // "confirm your email" screen (with resend) alongside the explanation.
+        if case .emailNotConfirmed = error as? AuthError {
+            pendingConfirmationEmail = address
+        }
     }
 
     func sendPasswordReset(email: String) async {
@@ -835,7 +965,10 @@ final class AuthService {
 
     // MARK: Internals
 
-    private func perform(provider: AuthProvider, _ work: @escaping () async throws -> String) async {
+    /// Returns the thrown error (already surfaced via `errorMessage`) so callers
+    /// can react to specific failures, e.g. an unconfirmed email on sign-in.
+    @discardableResult
+    private func perform(provider: AuthProvider, _ work: @escaping () async throws -> String) async -> Error? {
         isWorking = true
         errorMessage = nil
         infoMessage = nil
@@ -857,7 +990,7 @@ final class AuthService {
                 self.email = nil
                 self.provider = .unknown
                 errorMessage = "Couldn't reach the server. Check your connection and try again."
-                return
+                return nil
             }
             // No username yet means this is a brand-new account (e.g. first Apple
             // sign-in) — adopt guest dreams silently. An existing account already
@@ -865,8 +998,10 @@ final class AuthService {
             lastEntry = (username?.isEmpty ?? true) ? .signedUp : .signedIn
             status = .signedIn
             await hydrateAvatarIfNeeded()
+            return nil
         } catch {
             errorMessage = error.localizedDescription
+            return error
         }
     }
 
@@ -913,7 +1048,7 @@ final class MockAuthBackend: AuthBackend {
         username: String,
         firstName: String,
         lastName: String
-    ) async throws -> String {
+    ) async throws -> SignUpOutcome {
         try validate(email: email, password: password)
         var taken = Set(UserDefaults.standard.stringArray(forKey: usernamesKey) ?? [])
         guard taken.insert(username.lowercased()).inserted else {
@@ -922,7 +1057,16 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.set(Array(taken), forKey: usernamesKey)
         UserDefaults.standard.set(email, forKey: key)
         UserDefaults.standard.set(AuthProvider.email.rawValue, forKey: providerKey)
-        return email
+        // No email delivery in the mock — accounts are auto-confirmed.
+        return SignUpOutcome(email: email, needsEmailConfirmation: false, isExistingUnconfirmedAccount: false)
+    }
+
+    func resendConfirmationEmail(_ email: String) async throws {
+        // No-op in the mock — pretend the email was sent.
+    }
+
+    func handleEmailConfirmLink(_ url: URL) async throws {
+        // No real backend — accept any halflight://confirm-email link.
     }
 
     func signIn(email: String, password: String) async throws -> String {
@@ -1152,7 +1296,7 @@ final class SupabaseAuthBackend: AuthBackend {
         username: String,
         firstName: String,
         lastName: String
-    ) async throws -> String {
+    ) async throws -> SignUpOutcome {
         guard SupabaseConfig.isConfigured else { throw notConfigured }
         let response = try await client.auth.signUp(
             email: email,
@@ -1161,7 +1305,10 @@ final class SupabaseAuthBackend: AuthBackend {
                 "username": .string(username),
                 "first_name": .string(firstName),
                 "last_name": .string(lastName)
-            ]
+            ],
+            // The confirmation email's link returns the user to the app, where
+            // it's exchanged for the account's first session.
+            redirectTo: SupabaseConfig.emailConfirmRedirect
         )
         // Supabase doesn't error on a duplicate email when confirmations are on
         // (it avoids leaking which emails exist); instead it returns a user with
@@ -1169,28 +1316,60 @@ final class SupabaseAuthBackend: AuthBackend {
         if let identities = response.user.identities, identities.isEmpty {
             throw AuthError.message("An account with this email already exists. Try resetting your password instead.")
         }
-        // Persist the profile row. The DB's unique constraint on `username` is the
-        // source of truth — if two people race for the same name, the insert fails.
+        // Re-signing up with a never-confirmed email is NOT a new account:
+        // Supabase returns the original user (identities intact), re-sends its
+        // confirmation link, and silently ignores the new username and password.
+        // Detect it so the UI can say the original credentials still apply. A
+        // fresh account's confirmation is sent within seconds of its creation;
+        // a re-send lands much later (both are server clocks, so no skew). The
+        // metadata check is a fallback for the same trap caught mid-signup.
+        let isExistingUnconfirmed: Bool = {
+            if let sent = response.user.confirmationSentAt,
+               sent.timeIntervalSince(response.user.createdAt) > 60 { return true }
+            if case let .string(existing)? = response.user.userMetadata["username"],
+               existing.lowercased() != username.lowercased() { return true }
+            return false
+        }()
+        // The profiles row is created server-side by the `on_auth_user_created`
+        // trigger (from the metadata above): with email confirmation on there is
+        // no session yet, so the client couldn't insert it under RLS anyway.
+        // No session in the response means the user must confirm first.
+        return SignUpOutcome(
+            email: response.user.email ?? email,
+            needsEmailConfirmation: response.session == nil,
+            isExistingUnconfirmedAccount: isExistingUnconfirmed
+        )
+    }
+
+    func resendConfirmationEmail(_ email: String) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        try await client.auth.resend(
+            email: email,
+            type: .signup,
+            emailRedirectTo: SupabaseConfig.emailConfirmRedirect
+        )
+    }
+
+    func handleEmailConfirmLink(_ url: URL) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        // PKCE flow, like the reset link: the link carries `?code=…`, exchanged
+        // (with the verifier stored at sign-up on this device) for a session.
         do {
-            try await client
-                .from("profiles")
-                .insert(ProfileRow(
-                    id: response.user.id,
-                    username: username,
-                    firstName: firstName,
-                    lastName: lastName
-                ))
-                .execute()
+            try await client.auth.session(from: url)
         } catch {
-            throw profileInsertError(error, username: username)
+            throw AuthError.message("This confirmation link has expired or was already used. Try signing in — if that fails, request a new link.")
         }
-        return response.user.email ?? email
     }
 
     func signIn(email: String, password: String) async throws -> String {
         guard SupabaseConfig.isConfigured else { throw notConfigured }
-        let session = try await client.auth.signIn(email: email, password: password)
-        return session.user.email ?? email
+        do {
+            let session = try await client.auth.signIn(email: email, password: password)
+            return session.user.email ?? email
+        } catch let error as Auth.AuthError where error.errorCode == .emailNotConfirmed {
+            // Surfaced as the "confirm your email" screen, not a raw error.
+            throw AuthError.emailNotConfirmed
+        }
     }
 
     func signInWithApple(idToken: String, nonce: String, email: String?) async throws -> String {

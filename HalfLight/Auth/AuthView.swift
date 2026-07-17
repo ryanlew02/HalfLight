@@ -52,6 +52,8 @@ struct AuthView: View {
                         loadingPlaceholder
                     } else if auth.isSignedIn {
                         signedIn
+                    } else if auth.pendingConfirmationEmail != nil {
+                        confirmEmail
                     } else {
                         signedOut
                     }
@@ -194,6 +196,55 @@ struct AuthView: View {
         }
         // Clear any leftover availability state from a prior presentation.
         .onAppear { auth.resetUsernameStatus() }
+    }
+
+    // MARK: - Confirm email (after sign-up)
+
+    /// Shown after a sign-up (or a sign-in with a still-unconfirmed account):
+    /// the account exists but can't be used until the emailed link is tapped.
+    /// Tapping the link on this device deep-links back in and signs them in.
+    private var confirmEmail: some View {
+        VStack(spacing: DreamMetric.lg) {
+            Image(systemName: "envelope.badge.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(Color.dreamPrimary)
+            Text("Confirm your email")
+                .font(.dreamDisplay(24))
+            Text("We sent a confirmation link to \(auth.pendingConfirmationEmail ?? ""). Open the email on this device and tap the link to finish creating your account.")
+                .font(.dreamBody(15))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let error = auth.errorMessage {
+                errorBanner(error)
+            }
+            if let info = auth.infoMessage {
+                infoBanner(info)
+            }
+
+            Button {
+                Task { await auth.resendConfirmation() }
+            } label: {
+                if auth.isWorking {
+                    ProgressView().tint(.white)
+                } else {
+                    Text("Resend email")
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(auth.isWorking)
+
+            Button("Back to sign in") {
+                auth.cancelPendingConfirmation()
+                withAnimation { mode = .signIn }
+            }
+            .font(.dreamBody(14, .semibold))
+            .foregroundStyle(Color.dreamPrimary)
+            .disabled(auth.isWorking)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, DreamMetric.xxl)
     }
 
     // MARK: - Loading placeholder
