@@ -126,7 +126,10 @@ struct FollowListView: View {
 
 /// One dreamer in a follow list: a tappable avatar/name area that opens their
 /// public profile, plus a follow / following toggle (hidden on your own row).
-private struct FollowRow: View {
+/// One dreamer in a list: a tappable avatar/name area that opens their public
+/// profile, plus a follow / following toggle (hidden on your own row). Shared by
+/// the follow lists and the feed's account search.
+struct FollowRow: View {
     let person: FollowProfile
     let isFollowing: Bool
     let isMe: Bool

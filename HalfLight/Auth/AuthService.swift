@@ -128,6 +128,9 @@ protocol AuthBackend: Sendable {
     func followers(of username: String) async -> [FollowProfile]
     /// The dreamers `username` follows.
     func following(of username: String) async -> [FollowProfile]
+    /// Dreamers whose @handle or display name matches `query`, for the feed's
+    /// account search. Best-effort — empty when the server can't be reached.
+    func searchProfiles(query: String, limit: Int) async -> [FollowProfile]
     /// The completed Lucid Path lesson IDs stored on the account. `nil` when the
     /// server couldn't be reached, so a failed fetch never clobbers local progress.
     func fetchLucidProgress() async -> [String]?
@@ -342,6 +345,14 @@ final class AuthService {
     /// The dreamers `username` follows.
     func following(of username: String) async -> [FollowProfile] {
         await backend.following(of: username)
+    }
+
+    /// Search dreamers by @handle or display name for the feed's account search.
+    /// Best-effort — a blank query (or an unreachable server) returns no matches.
+    func searchProfiles(_ query: String, limit: Int = 20) async -> [FollowProfile] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        return await backend.searchProfiles(query: trimmed, limit: limit)
     }
 
     // MARK: - Lucid Path progress (tied to the account, like dreams)
@@ -1127,6 +1138,8 @@ final class MockAuthBackend: AuthBackend {
 
     func following(of username: String) async -> [FollowProfile] { [] }
 
+    func searchProfiles(query: String, limit: Int) async -> [FollowProfile] { [] }
+
     func fetchLucidProgress() async -> [String]? {
         // The mock is always "reachable", so report an empty set (not nil) when
         // nothing has been stored yet.
@@ -1511,6 +1524,28 @@ final class SupabaseAuthBackend: AuthBackend {
         struct Row: Decodable { let username: String; let name: String; let avatar: String? }
         let rows: [Row]? = try? await client
             .rpc(rpc, params: ["p_username": username])
+            .execute()
+            .value
+        guard let rows else { return [] }
+        return rows.map { row in
+            FollowProfile(
+                username: row.username,
+                name: row.name,
+                photo: row.avatar.flatMap { Data(base64Encoded: $0) }
+            )
+        }
+    }
+
+    func searchProfiles(query: String, limit: Int) async -> [FollowProfile] {
+        guard SupabaseConfig.isConfigured else { return [] }
+        struct Params: Encodable { let p_query: String; let p_limit: Int }
+        struct Row: Decodable { let username: String; let name: String; let avatar: String? }
+        // Names aren't selectable on `profiles` directly (column grants expose only
+        // username/avatar), so this goes through the SECURITY DEFINER RPC. `p_query`
+        // is a bind parameter, so any `%`/`_` in the query just widens the ILIKE
+        // rather than being an injection risk.
+        let rows: [Row]? = try? await client
+            .rpc("search_profiles", params: Params(p_query: query, p_limit: limit))
             .execute()
             .value
         guard let rows else { return [] }

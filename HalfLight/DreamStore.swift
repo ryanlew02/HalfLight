@@ -496,6 +496,16 @@ final class DreamStore {
         Task { try? await feedSync.recordView(postID: id) }
     }
 
+    /// Search public feed posts by title or dream text, for the feed's search
+    /// screen. Returns records straight from the server (not local SwiftData) so
+    /// results aren't limited to the cached feed. Best-effort — empty when the app
+    /// is local-only, the query is blank, or the server can't be reached.
+    func searchPosts(_ query: String, limit: Int = 30) async -> [FeedPostRecord] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let feedSync, !trimmed.isEmpty else { return [] }
+        return (try? await feedSync.searchPosts(query: trimmed, limit: limit)) ?? []
+    }
+
     /// Add a comment locally and push it; bumps the post's comment count.
     @discardableResult
     func addComment(to post: FeedPost, text: String) -> Comment {

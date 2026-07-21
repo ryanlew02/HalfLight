@@ -162,6 +162,9 @@ protocol FeedSyncing: Sendable {
     func publish(_ post: FeedPostUpsert) async throws
     func unpublish(dreamID: UUID) async throws
     func fetchFeed(limit: Int) async throws -> [FeedPostRecord]
+    /// Public posts whose title or dream text matches `query`, for the feed's
+    /// search screen. Newest-first, capped at `limit`.
+    func searchPosts(query: String, limit: Int) async throws -> [FeedPostRecord]
 
     // Engagement
     func likedPostIDs() async throws -> [UUID]
@@ -221,6 +224,28 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
             .select()
             // Drop anything a moderator has hidden via the admin dashboard.
             .eq("hidden", value: false)
+            .order("created_at", ascending: false)
+            .limit(limit)
+            .execute()
+            .value
+    }
+
+    func searchPosts(query: String, limit: Int) async throws -> [FeedPostRecord] {
+        // The `or` filter is a comma-separated expression parsed by PostgREST, so a
+        // raw comma/parenthesis in the query would break it (and `*`/`%` are ILIKE
+        // wildcards). Strip those to a plain substring match; other characters are
+        // safe inside the value.
+        let cleaned = query.filter { !",()%*\\".contains($0) }
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        // Inside PostgREST's `or` expression the ILIKE wildcard is `*` (which it
+        // maps to SQL `%`); a literal `%` here would be matched verbatim.
+        let pattern = "*\(trimmed)*"
+        return try await client.from("feed_posts")
+            .select()
+            // Drop anything a moderator has hidden via the admin dashboard.
+            .eq("hidden", value: false)
+            .or("title.ilike.\(pattern),dream_description.ilike.\(pattern)")
             .order("created_at", ascending: false)
             .limit(limit)
             .execute()

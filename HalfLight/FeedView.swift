@@ -16,6 +16,8 @@ struct FeedView: View {
     @Environment(AuthService.self) private var auth
     /// Presents the sign-up / log-in sheet when a signed-out dreamer taps the gate.
     @State private var showAuth = false
+    /// Presents the account/post search screen from the header's magnifying glass.
+    @State private var showSearch = false
     // The full set of posts; `FeedRanker` decides the order (see `rankedPosts`).
     // Newest-first here only gives a stable input and a sensible cold-start order.
     @Query(sort: \FeedPost.createdAt, order: .reverse) private var posts: [FeedPost]
@@ -122,13 +124,28 @@ struct FeedView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Matches the Journal / Lucid Path heading style (a left-aligned
-                // `.dreamTitle` instead of the system inline nav title).
-                Text("Feed")
-                    .font(.dreamTitle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
+                // `.dreamTitle` instead of the system inline nav title), with a
+                // search affordance trailing it.
+                HStack(spacing: DreamMetric.md) {
+                    Text("Feed")
+                        .font(.dreamTitle)
+                    Spacer(minLength: 0)
+                    if auth.isSignedIn {
+                        Button {
+                            SoundManager.shared.play(.tap)
+                            showSearch = true
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.dreamText)
+                                .frame(width: 32, height: 32)
+                        }
+                        .accessibilityLabel("Search")
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
 
                 Group {
                     if !auth.isSignedIn {
@@ -158,6 +175,9 @@ struct FeedView: View {
             }
             .sheet(isPresented: $showAuth) {
                 AuthView()
+            }
+            .sheet(isPresented: $showSearch) {
+                FeedSearchView()
             }
             .confirmationDialog(
                 "Report this dream?",
