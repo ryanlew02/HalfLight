@@ -29,6 +29,9 @@ struct AddDreamView: View {
     @State private var showPaywall = false
     /// Presented when a signed-out dreamer tries to make a dream public.
     @State private var showAuth = false
+    /// Set when a public post is blocked by the content filter (slur / hate
+    /// speech); drives the alert and keeps the sheet open so it can be edited.
+    @State private var contentWarning: String?
 
     @State private var title: String
     @State private var entry: String
@@ -235,6 +238,17 @@ struct AddDreamView: View {
             .onDisappear { transcriber.stop() }
             .sheet(isPresented: $showPaywall) { PaywallView() }
             .sheet(isPresented: $showAuth) { AuthView() }
+            .alert(
+                "Can't share this dream",
+                isPresented: Binding(
+                    get: { contentWarning != nil },
+                    set: { if !$0 { contentWarning = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(contentWarning ?? "")
+            }
             .navigationTitle(isEditing ? "Edit Dream" : "New Dream")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -262,14 +276,30 @@ struct AddDreamView: View {
     }
 
     private func save() {
-        // A new dream that earns XP triggers the reward sound; this tap covers
-        // edits (and is harmlessly replaced by the reward when one follows).
-        SoundManager.shared.play(.tap)
-        transcriber.stop()
         let tags = tagText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
+
+        let willPublish = isPublic && auth.isSignedIn
+        // A public post is checked for hate speech before it leaves the device.
+        // Swearing is allowed — only slurs / hateful language block sharing. Private
+        // dreams are never checked. If blocked, keep the sheet open to be edited.
+        if willPublish,
+           case .blocked(let reason) = ContentFilter.checkPost(
+               title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+               body: entry.trimmingCharacters(in: .whitespacesAndNewlines),
+               tags: tags
+           ) {
+            SoundManager.shared.play(.wrong)
+            contentWarning = reason
+            return
+        }
+
+        // A new dream that earns XP triggers the reward sound; this tap covers
+        // edits (and is harmlessly replaced by the reward when one follows).
+        SoundManager.shared.play(.tap)
+        transcriber.stop()
 
         let draft = DreamDraft(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -277,7 +307,7 @@ struct AddDreamView: View {
             mood: mood,
             tags: tags,
             // Never publish a guest's dream — sharing to the feed needs an account.
-            isPublic: isPublic && auth.isSignedIn,
+            isPublic: willPublish,
             isLucid: isLucid,
             aiCategory: aiMeaning == nil ? nil : aiCategory,
             aiMeaning: aiMeaning,

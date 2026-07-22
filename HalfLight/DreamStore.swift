@@ -664,6 +664,14 @@ final class DreamStore {
                 rateLimitNotice = String(
                     localized: "You can publish up to 3 dreams a day. Try again tomorrow."
                 )
+            } catch FeedSyncError.moderationRejected {
+                // The server refused the post as hateful. The client filter normally
+                // blocks this before saving, so reaching here means list drift — undo
+                // the local share to match the feed and tell the dreamer.
+                unshareLocally(dreamID: dreamID)
+                rateLimitNotice = String(
+                    localized: "This dream can't be shared — it contains language that isn't allowed on the feed."
+                )
             } catch {
                 // Other failures stay best-effort, as before.
             }

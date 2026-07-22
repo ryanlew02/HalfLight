@@ -27,6 +27,11 @@ enum FeedSyncError: Error {
     /// `enforce_*_limit` triggers, which raise SQLSTATE `P0429` with a
     /// `RATE_LIMIT` marker.
     case rateLimited
+    /// The server rejected a post because it contains a slur / hate speech.
+    /// Enforced by the `moderate_feed_post` trigger, which raises SQLSTATE
+    /// `P0403` with a `MODERATION` marker. Normally the client filter catches
+    /// this first — this is the backstop for direct-API writes / list drift.
+    case moderationRejected
 }
 
 /// True when `error` is a server-side daily rate-limit rejection (SQLSTATE
@@ -34,6 +39,13 @@ enum FeedSyncError: Error {
 func isRateLimitError(_ error: Error) -> Bool {
     let text = String(describing: error)
     return text.contains("P0429") || text.contains("RATE_LIMIT")
+}
+
+/// True when `error` is a server-side moderation rejection (SQLSTATE `P0403` /
+/// `MODERATION` marker) raised by the profile / feed-post moderation triggers.
+func isModerationError(_ error: Error) -> Bool {
+    let text = String(describing: error)
+    return text.contains("P0403") || text.contains("MODERATION")
 }
 
 /// Wire shape of a row in `feed_posts`. snake_case to match Postgres.
@@ -415,13 +427,15 @@ final class SupabaseFeedSync: FeedSyncing, @unchecked Sendable {
         }
     }
 
-    /// Run a feed write, translating the server's daily-cap rejection into a
-    /// typed `FeedSyncError.rateLimited` so callers can show a friendly message.
+    /// Run a feed write, translating the server's typed rejections — the daily-cap
+    /// (`rateLimited`) and content-moderation (`moderationRejected`) triggers —
+    /// into `FeedSyncError` cases so callers can show a friendly message.
     private func mapRateLimit(_ work: () async throws -> Void) async throws {
         do {
             try await work()
         } catch {
             if isRateLimitError(error) { throw FeedSyncError.rateLimited }
+            if isModerationError(error) { throw FeedSyncError.moderationRejected }
             throw error
         }
     }

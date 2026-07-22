@@ -483,6 +483,10 @@ final class AuthService {
             errorMessage = "Usernames must be 3–20 characters using letters, numbers, or underscores."
             return false
         }
+        if let reason = Self.contentRejection(username: handle, firstName: first, lastName: last) {
+            errorMessage = reason
+            return false
+        }
         do {
             guard try await backend.isUsernameAvailable(handle) else {
                 errorMessage = "“\(handle)” is taken. Try another username."
@@ -537,6 +541,10 @@ final class AuthService {
 
         guard Self.isValidUsername(handle) else {
             errorMessage = "Usernames must be 3–20 characters using letters, numbers, or underscores."
+            return false
+        }
+        if case .blocked(let reason) = ContentFilter.checkUsername(handle) {
+            errorMessage = reason
             return false
         }
         if usernameCooldownEnds != nil {
@@ -597,6 +605,10 @@ final class AuthService {
         }
         guard Self.isValidEmail(address) else {
             errorMessage = "Please enter a valid email address."
+            return
+        }
+        if let reason = Self.contentRejection(username: handle, firstName: first, lastName: last) {
+            errorMessage = reason
             return
         }
 
@@ -723,6 +735,17 @@ final class AuthService {
         username.range(of: "^[a-z0-9_]{3,20}$", options: .regularExpression) != nil
     }
 
+    /// Run the username and both name parts through the content filter, returning
+    /// the first rejection reason (or `nil` when all are clean). The strict gate:
+    /// blocks slurs *and* profanity, so nothing crude ends up on a public label.
+    static func contentRejection(username: String, firstName: String, lastName: String) -> String? {
+        if case .blocked(let reason) = ContentFilter.checkUsername(username) { return reason }
+        for name in [firstName, lastName] {
+            if case .blocked(let reason) = ContentFilter.checkDisplayName(name) { return reason }
+        }
+        return nil
+    }
+
     /// A basic well-formed email check: `local@domain.tld`. The sign-up form uses
     /// this live; it's also the backstop in `signUp`. (The server is the final
     /// authority on whether the address actually exists.)
@@ -752,6 +775,9 @@ final class AuthService {
         let handle = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !handle.isEmpty else { usernameStatus = .idle; return }
         guard Self.isValidUsername(handle) else { usernameStatus = .invalid; return }
+        // A handle containing a slur or profanity is reported as invalid, without a
+        // network round-trip — the same red indicator as a malformed handle.
+        guard !ContentFilter.checkUsername(handle).isBlocked else { usernameStatus = .invalid; return }
 
         usernameStatus = .checking
         usernameCheckTask = Task { [handle] in
@@ -1294,6 +1320,12 @@ final class SupabaseAuthBackend: AuthBackend {
     /// because email confirmation is on), a network blip — is surfaced as-is so a
     /// real problem isn't hidden behind a misleading "username was just taken".
     private func profileInsertError(_ error: Error, username: String) -> AuthError {
+        // The server-side moderation trigger (P0403 / MODERATION marker) rejected
+        // the handle or name. The client filter normally catches this first, so
+        // this is the backstop for list drift.
+        if isModerationError(error) {
+            return .message("That username or name contains language that isn't allowed. Please choose another.")
+        }
         if let pg = error as? PostgrestError {
             if pg.code == "23505" {
                 return .message("“\(username)” was just taken. Try another username.")
