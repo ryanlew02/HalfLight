@@ -13,6 +13,10 @@ struct AuthView: View {
     @Environment(AuthService.self) private var auth
     @Environment(\.dismiss) private var dismiss
 
+    /// Open the sheet on "create account" rather than the default "sign in" — used
+    /// by onboarding's "Sign up" call to action.
+    var startInSignUp = false
+
     /// Explicit focus targets. Driving focus through `@FocusState` makes the text
     /// fields focus on the first tap (SwiftUI otherwise sometimes needs several)
     /// and lets Return advance through the form.
@@ -62,6 +66,9 @@ struct AuthView: View {
             }
             .background { NightSkyBackground() }
             .task {
+                // Honor the requested starting mode (onboarding opens on sign-up)
+                // before the form builds, so there's no flash of the sign-in header.
+                if startInSignUp { mode = .signUp }
                 // Roughly the sheet's slide-in duration; building the UIKit-backed
                 // form before this finishes is what causes the freeze.
                 try? await Task.sleep(for: .milliseconds(350))

@@ -71,6 +71,9 @@ struct HalfLightApp: App {
 private struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("appTheme") private var theme: AppTheme = .system
+    /// One-time first-launch onboarding gate. Set once the dreamer finishes the
+    /// intro — whether they sign up or choose to continue as a guest.
+    @AppStorage("didCompleteOnboarding") private var didCompleteOnboarding = false
     @State private var store: DreamStore?
     @State private var auth = AuthService()
     @State private var subscriptions = SubscriptionManager()
@@ -89,6 +92,10 @@ private struct RootView: View {
                     // but no handle yet: block the app behind a one-time setup gate.
                     if auth.needsProfileSetup {
                         UsernameSetupView()
+                    } else if !didCompleteOnboarding && !auth.isSignedIn {
+                        // First launch as a guest: show the intro tour. A returning
+                        // signed-in dreamer (restored session) skips straight past it.
+                        OnboardingView(onContinueAsGuest: { didCompleteOnboarding = true })
                     } else {
                         MainTabView()
                     }
@@ -134,6 +141,9 @@ private struct RootView: View {
         }
         .onChange(of: auth.status) { previous, status in
             if status == .signedIn {
+                // Signing up from onboarding (or restoring a session) means the
+                // intro is done — never show it again for this account.
+                didCompleteOnboarding = true
                 store?.reconcileFeed()
                 store?.reconcileNotifications()
                 // Self-heal the server entitlement: if this account is subscribed
