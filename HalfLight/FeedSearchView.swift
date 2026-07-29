@@ -6,7 +6,8 @@
 //  Two tabs: Accounts (dreamers, by @handle or name — via the `search_profiles`
 //  RPC) and Posts (shared dreams, by title or text — a direct `feed_posts` query).
 //  Presented as a sheet with its own navigation stack so a tapped account opens
-//  their public profile and a tapped post opens a read-only detail.
+//  their public profile and a tapped post opens a detail that can be liked and
+//  commented on, the same as a feed card.
 //
 
 import SwiftUI
@@ -254,7 +255,7 @@ struct FeedSearchView: View {
 // MARK: - Post result row
 
 /// A shared dream in the Posts search results: mood, title, a snippet, and the
-/// author. Tapping opens a read-only detail.
+/// author. Tapping opens the full dream, where it can be liked and commented on.
 private struct PostResultRow: View {
     let record: FeedPostRecord
     let photo: Data?
@@ -306,18 +307,32 @@ private struct PostResultRow: View {
 
 // MARK: - Read-only post detail
 
-/// A read-only look at a shared dream found in search — it may belong to any
-/// dreamer and isn't part of the local library, so (unlike `DreamDetailView`)
-/// there's nothing to edit here. The author header opens their public profile.
+/// A shared dream found in search. It may belong to any dreamer and isn't part of
+/// the local library, so (unlike `DreamDetailView`) there's nothing to edit — but
+/// it can be liked and commented on just like a feed card. Both need a local
+/// `FeedPost`, so the record is cached on appear (see `DreamStore.cachePost`) and
+/// the engagement row runs off that live model.
 struct SearchPostDetailView: View {
     let record: FeedPostRecord
     let authorPhoto: Data?
+
+    @Environment(DreamStore.self) private var store
+    /// The cached post backing likes and comments; `nil` for the first frame only.
+    @State private var post: FeedPost?
+    /// Drives the comments sheet, mirroring the feed.
+    @State private var commentsPost: FeedPost?
 
     private var mood: Dream.Mood { Dream.Mood(rawValue: record.mood ?? "") ?? .vivid }
 
     private var author: FeedAuthor {
         FeedAuthor(username: record.authorUsername, name: record.authorName, photo: authorPhoto)
     }
+
+    // Counts come from the cached post once it exists, so a like or a new comment
+    // updates in place; the record's snapshot covers the first frame.
+    private var likeCount: Int { post?.likeCount ?? record.likeCount }
+    private var commentCount: Int { post?.commentCount ?? record.commentCount }
+    private var isLiked: Bool { post?.isLiked ?? false }
 
     var body: some View {
         ScrollView {
@@ -337,6 +352,7 @@ struct SearchPostDetailView: View {
                 }
 
                 aiSection
+                actionRow
             }
             .padding(20)
         }
@@ -346,6 +362,65 @@ struct SearchPostDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .sheet(item: $commentsPost) { post in
+            CommentsView(post: post)
+        }
+        .task {
+            let cached = store.cachePost(record)
+            post = cached
+            // Hold it against the feed refresh's sweep while it's on screen.
+            store.pinPost(cached.id)
+            await store.refreshLikeState(for: cached)
+        }
+        .onDisappear { store.unpinPost(record.id) }
+    }
+
+    // MARK: - Like / comment
+
+    private var actionRow: some View {
+        HStack(spacing: DreamMetric.xl) {
+            Button {
+                guard let post else { return }
+                SoundManager.shared.play(.tap)
+                commentsPost = post
+            } label: {
+                actionLabel(symbol: "bubble.left", count: commentCount, active: false)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Comment")
+
+            Spacer(minLength: 0)
+
+            Button {
+                guard let post else { return }
+                SoundManager.shared.play(post.isLiked ? .tap : .shimmer)
+                store.toggleLike(post)
+            } label: {
+                actionLabel(
+                    symbol: isLiked ? "heart.fill" : "heart",
+                    count: likeCount,
+                    active: isLiked
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isLiked ? "Unlike" : "Like")
+        }
+        .disabled(post == nil)
+        .padding(.horizontal, DreamMetric.xs)
+        .padding(.top, DreamMetric.xs)
+    }
+
+    private func actionLabel(symbol: String, count: Int, active: Bool) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .semibold))
+            if count > 0 {
+                Text("\(count)")
+                    .font(.dreamBody(15, .semibold))
+            }
+        }
+        .foregroundStyle(active ? Color.dreamAccent : Color.dreamText.opacity(0.6))
+        .contentTransition(.symbolEffect(.replace))
     }
 
     private var authorHeader: some View {

@@ -36,8 +36,16 @@ struct CommentsView: View {
     @State private var selectedProfile: FeedAuthor?
     /// The comment the dreamer is reporting, driving the reason picker.
     @State private var reportingComment: Comment?
+    /// The @handle the dreamer is about to block, driving the confirmation.
+    @State private var blockingHandle: String?
     /// Shows the "thanks for reporting" confirmation after a report is filed.
     @State private var showReportThanks = false
+    /// How the server pull is going. The list renders the local cache, which is
+    /// empty until the pull lands (and stays empty if it fails) — so an empty
+    /// list only means "no comments" once we've actually heard back.
+    @State private var loadState: LoadState = .loading
+
+    private enum LoadState { case loading, loaded, failed }
 
     init(post: FeedPost) {
         self.post = post
@@ -52,10 +60,14 @@ struct CommentsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if comments.isEmpty {
-                    emptyState
-                } else {
+                if !comments.isEmpty {
                     commentList
+                } else {
+                    switch loadState {
+                    case .loading: loadingState
+                    case .failed:  failedState
+                    case .loaded:  emptyState
+                    }
                 }
                 composer
             }
@@ -98,9 +110,17 @@ struct CommentsView: View {
             } message: {
                 Text("We'll review this comment and take action if it breaks our guidelines.")
             }
+            .blockConfirmation(handle: $blockingHandle) { handle in
+                if await auth.blockUser(username: handle) {
+                    store.purgeAuthor(username: handle)
+                    // Their comments are gone from the cache; pull the rest again
+                    // so the thread reflects what the server will now serve.
+                    await load()
+                }
+            }
             .task {
                 refreshRanking()
-                store.reconcileComments(postID: post.id)
+                await load()
             }
             // Re-rank when comments are added/removed (e.g. the reconcile pulls more
             // in, or the dreamer posts one) — but not on every like, which would
@@ -139,8 +159,19 @@ struct CommentsView: View {
         )
     }
 
+    /// Pull the thread from the server. A failure leaves the cache alone and
+    /// switches the empty view to a retry, so a thread with comments is never
+    /// mislabelled "no comments yet".
+    private func load() async {
+        if comments.isEmpty { loadState = .loading }
+        loadState = await store.reconcileComments(postID: post.id) ? .loaded : .failed
+    }
+
     private var navigationTitle: String {
-        comments.count == 1 ? "1 Comment" : "\(comments.count) Comments"
+        // Don't claim "0 Comments" before the pull lands — the count on the card
+        // is the server's, and the local cache may not have caught up yet.
+        if comments.isEmpty && loadState != .loaded { return String(localized: "Comments") }
+        return comments.count == 1 ? "1 Comment" : "\(comments.count) Comments"
     }
 
     /// Live comments in the last-computed ranked order; comments added/removed
@@ -222,6 +253,12 @@ struct CommentsView: View {
                 } label: {
                     Label("Report Comment", systemImage: "flag")
                 }
+                Button(role: .destructive) {
+                    SoundManager.shared.play(.tap)
+                    blockingHandle = comment.authorUsername
+                } label: {
+                    Label("Block @\(comment.authorUsername)", systemImage: "hand.raised.slash")
+                }
             }
         }
     }
@@ -244,6 +281,45 @@ struct CommentsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(comment.isLiked ? "Unlike comment" : "Like comment")
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: DreamMetric.sm) {
+            Spacer()
+            ProgressView()
+                .tint(Color.dreamPrimary)
+            Text("Loading comments…")
+                .font(.dreamBodyText)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(DreamMetric.xl)
+    }
+
+    private var failedState: some View {
+        VStack(spacing: DreamMetric.sm) {
+            Spacer()
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(Color.dreamPrimary)
+            Text("Couldn't load comments")
+                .font(.dreamSectionHeader)
+            Text("Check your connection and try again.")
+                .font(.dreamBodyText)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Try Again") {
+                SoundManager.shared.play(.tap)
+                Task { await load() }
+            }
+            .font(.dreamBody(15, .semibold))
+            .foregroundStyle(Color.dreamPrimary)
+            .padding(.top, DreamMetric.xs)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(DreamMetric.xl)
     }
 
     private var emptyState: some View {

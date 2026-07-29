@@ -2,10 +2,10 @@
 //  DreamWidgets.swift
 //  HalfLightWidgets
 //
-//  The home-screen and lock-screen widgets for HalfLight: a streak + record CTA,
+//  The home-screen and lock-screen widgets for HalfLight: a streak + journal CTA,
 //  the latest dream, at-a-glance stats, and a nightly prompt. All read the shared
-//  DreamSnapshot; the record-CTA surfaces tap straight into capture via
-//  QuickRecordIntent (foregrounds the app, mic running).
+//  DreamSnapshot; the CTA surfaces tap straight into a blank entry via
+//  JournalDreamIntent (foregrounds the app, no dictation).
 //
 
 import WidgetKit
@@ -14,12 +14,12 @@ import AppIntents
 
 // MARK: - Shared helpers
 
-/// Wrap content so tapping it launches the app into quick-capture. Works on
-/// system and accessoryCircular / accessoryRectangular families.
-private struct RecordButton<Content: View>: View {
+/// Wrap content so tapping it launches the app onto a new, blank dream entry.
+/// Works on system and accessoryCircular / accessoryRectangular families.
+private struct JournalButton<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
-        Button(intent: QuickRecordIntent()) { content }
+        Button(intent: JournalDreamIntent()) { content }
             .buttonStyle(.plain)
     }
 }
@@ -99,15 +99,15 @@ private extension View {
 
 private func daysLabel(_ count: Int) -> String { count == 1 ? "day" : "days" }
 
-// MARK: - Streak + record CTA
+// MARK: - Streak + journal CTA
 
 struct StreakWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "HalfLightStreakWidget", provider: DreamProvider()) { entry in
             StreakWidgetView(entry: entry)
         }
-        .configurationDisplayName("Streak & Record")
-        .description("Your journaling streak — tap to record a dream.")
+        .configurationDisplayName("Streak & Journal")
+        .description("Your journaling streak — tap to journal a dream.")
         .supportedFamilies([
             .systemSmall, .systemMedium,
             .accessoryCircular, .accessoryRectangular, .accessoryInline
@@ -130,20 +130,20 @@ struct StreakWidgetView: View {
         case .accessoryInline:
             Label("\(streak)-day streak", systemImage: "flame.fill")
         case .accessoryCircular:
-            RecordButton { circular }
+            JournalButton { circular }
         case .accessoryRectangular:
-            RecordButton { rectangular }
+            JournalButton { rectangular }
         case .systemMedium:
-            RecordButton { medium }
+            JournalButton { medium }
         default:
-            RecordButton { small }
+            JournalButton { small }
         }
     }
 
-    private var recordPill: some View {
+    private var journalPill: some View {
         HStack(spacing: 5) {
-            Image(systemName: "mic.fill")
-            Text("Record")
+            Image(systemName: "square.and.pencil")
+            Text("Journal")
         }
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(Color.dreamOnPrimary)
@@ -168,7 +168,7 @@ struct StreakWidgetView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Color.dreamSubtle)
             Spacer()
-            recordPill
+            journalPill
         }
     }
 
@@ -191,9 +191,9 @@ struct StreakWidgetView: View {
                 Spacer()
             }
             VStack(spacing: 8) {
-                Image(systemName: "mic.fill")
+                Image(systemName: "square.and.pencil")
                     .font(.system(size: 26, weight: .semibold))
-                Text("Record a dream")
+                Text("Journal a dream")
                     .font(.system(size: 14, weight: .semibold))
                     .multilineTextAlignment(.center)
             }
@@ -219,7 +219,7 @@ struct StreakWidgetView: View {
             Image(systemName: "flame.fill").font(.title3)
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(streak)-day streak").font(.headline)
-                Text("Tap to record a dream").font(.caption2)
+                Text("Tap to journal a dream").font(.caption2)
             }
             Spacer()
         }
@@ -312,7 +312,7 @@ struct LastDreamWidgetView: View {
     }
 
     private var empty: some View {
-        RecordButton {
+        JournalButton {
             VStack(alignment: .leading, spacing: 6) {
                 Image(systemName: "moon.zzz.fill")
                     .font(.title)
@@ -320,7 +320,7 @@ struct LastDreamWidgetView: View {
                 Text("No dreams yet")
                     .font(.system(.headline, design: .serif))
                     .foregroundStyle(Color.dreamText)
-                Text("Tap to record your first one.")
+                Text("Tap to journal your first one.")
                     .font(.system(size: 13))
                     .foregroundStyle(Color.dreamSubtle)
             }
@@ -438,7 +438,7 @@ struct PromptWidgetView: View {
         case .accessoryInline:
             Label(entry.prompt, systemImage: "moon.stars.fill")
         case .accessoryRectangular:
-            RecordButton {
+            JournalButton {
                 VStack(alignment: .leading, spacing: 2) {
                     Label("Dream prompt", systemImage: "moon.stars.fill").font(.caption2)
                     Text(entry.prompt).font(.caption).lineLimit(3)
@@ -446,7 +446,7 @@ struct PromptWidgetView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         default:
-            RecordButton { medium }
+            JournalButton { medium }
         }
     }
 
@@ -462,8 +462,8 @@ struct PromptWidgetView: View {
                 .minimumScaleFactor(0.8)
             Spacer(minLength: 2)
             HStack(spacing: 5) {
-                Image(systemName: "mic.fill")
-                Text("Tap to record")
+                Image(systemName: "square.and.pencil")
+                Text("Tap to journal")
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Color.dreamPrimary)
@@ -472,20 +472,20 @@ struct PromptWidgetView: View {
     }
 }
 
-// MARK: - Record a dream (lock screen)
+// MARK: - Journal a dream (lock screen)
 
-struct RecordWidget: Widget {
+struct JournalWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "HalfLightRecordWidget", provider: DreamProvider()) { _ in
-            RecordWidgetView()
+            JournalWidgetView()
         }
-        .configurationDisplayName("Record a Dream")
-        .description("A one-tap shortcut to capture a dream with dictation.")
+        .configurationDisplayName("Journal a Dream")
+        .description("A one-tap shortcut to a blank dream entry.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular])
     }
 }
 
-struct RecordWidgetView: View {
+struct JournalWidgetView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
@@ -496,21 +496,21 @@ struct RecordWidgetView: View {
     private var content: some View {
         switch family {
         case .accessoryRectangular:
-            RecordButton {
+            JournalButton {
                 HStack(spacing: 8) {
-                    Image(systemName: "mic.fill").font(.title3)
+                    Image(systemName: "square.and.pencil").font(.title3)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Record a dream").font(.headline)
+                        Text("Journal a dream").font(.headline)
                         Text("Capture it before it fades").font(.caption2)
                     }
                     Spacer()
                 }
             }
         default:
-            RecordButton {
+            JournalButton {
                 ZStack {
                     AccessoryWidgetBackground()
-                    Image(systemName: "mic.fill")
+                    Image(systemName: "square.and.pencil")
                         .font(.system(size: 20, weight: .semibold))
                 }
             }

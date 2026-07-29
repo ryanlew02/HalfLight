@@ -3,7 +3,7 @@
 //  HalfLightWidgets
 //
 //  The widget extension entry point. Registers every HalfLight widget plus the
-//  quick-record Control.
+//  journal-a-dream Control.
 //
 
 import WidgetKit
@@ -16,7 +16,7 @@ struct HalfLightWidgetBundle: WidgetBundle {
         LastDreamWidget()
         StatsWidget()
         PromptWidget()
-        RecordWidget()
-        QuickRecordControl()
+        JournalWidget()
+        JournalDreamControl()
     }
 }

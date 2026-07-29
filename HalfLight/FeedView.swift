@@ -20,7 +20,14 @@ struct FeedView: View {
     @State private var showSearch = false
     // The full set of posts; `FeedRanker` decides the order (see `rankedPosts`).
     // Newest-first here only gives a stable input and a sensible cold-start order.
-    @Query(sort: \FeedPost.createdAt, order: .reverse) private var posts: [FeedPost]
+    // Posts cached only because they were opened from search are excluded — they
+    // may be far older than the feed window and were never part of it.
+    @Query(
+        filter: #Predicate<FeedPost> { $0.isSearchResult == false },
+        sort: \FeedPost.createdAt,
+        order: .reverse
+    )
+    private var posts: [FeedPost]
     /// Who the dreamer follows, a ranking signal.
     @Query private var follows: [Follow]
     // Mirror the profile so the feed re-snapshots author info the moment any of
@@ -40,6 +47,8 @@ struct FeedView: View {
     @State private var commentsPost: FeedPost?
     /// The post the dreamer is reporting, driving the reason picker.
     @State private var reportingPost: FeedPost?
+    /// The @handle the dreamer is about to block, driving the confirmation.
+    @State private var blockingHandle: String?
     /// Shows the "thanks for reporting" confirmation after a report is filed.
     @State private var showReportThanks = false
     /// The ranked order, captured as ids so the feed doesn't reshuffle mid-scroll
@@ -130,7 +139,9 @@ struct FeedView: View {
                     Text("Feed")
                         .font(.dreamTitle)
                     Spacer(minLength: 0)
-                    if auth.isSignedIn {
+                    // No search while banned — finding dreamers is part of what a
+                    // ban takes away (the RPCs refuse a banned caller too).
+                    if auth.isSignedIn && !auth.isBanned {
                         Button {
                             SoundManager.shared.play(.tap)
                             showSearch = true
@@ -152,6 +163,10 @@ struct FeedView: View {
                         // The feed is a shared, multi-user space — gate it behind an
                         // account so likes/comments are attributable.
                         signInGate
+                    } else if auth.isBanned {
+                        // Banned from the shared space: same shape as the signed-out
+                        // gate, since that's exactly what a ban restores them to.
+                        bannedGate
                     } else if posts.isEmpty {
                         emptyState
                     } else {
@@ -204,14 +219,37 @@ struct FeedView: View {
             } message: {
                 Text("We'll review this dream and take action if it breaks our guidelines.")
             }
+            .blockConfirmation(handle: $blockingHandle) { handle in
+                if await auth.blockUser(username: handle) {
+                    store.purgeAuthor(username: handle)
+                    store.reconcileFeed()
+                    refreshRanking()
+                }
+            }
             // The feed stays alive across tab switches (it isn't rebuilt), so refresh
             // whenever the Feed tab becomes active — `initial: true` covers the first
             // time it's opened.
             .onChange(of: router.tab, initial: true) { _, tab in
                 guard tab == .feed, auth.isSignedIn else { return }
-                store.reconcileFeed()
-                store.refreshFeedAuthors()
-                refreshRanking()
+                Task {
+                    // Re-check the ban first: this is how a ban lands on a session
+                    // that's already running, and there's no point pulling a feed
+                    // the server is about to refuse anyway.
+                    await auth.refreshBan()
+                    guard !auth.isBanned else { return }
+                    store.reconcileFeed()
+                    store.refreshFeedAuthors()
+                    refreshRanking()
+                }
+            }
+            // The moment a ban takes hold, drop everything the feed left on this
+            // device — otherwise the last pull would stay browsable offline.
+            .onChange(of: auth.isBanned, initial: true) { _, banned in
+                guard banned else { return }
+                store.wipeSocialCache()
+                showSearch = false
+                commentsPost = nil
+                selectedProfile = nil
             }
             // Re-rank when posts are added/removed or the follow set changes, but
             // not on every like/impression — that would reshuffle under the user.
@@ -261,6 +299,7 @@ struct FeedView: View {
                         onToggleLike: { toggleLike(post) },
                         onComment: { commentsPost = post },
                         onReport: { reportingPost = post },
+                        onBlock: { blockingHandle = post.authorUsername },
                         onImpression: { recordImpression(post) }
                     )
                     .padding(.horizontal, DreamMetric.screen)
@@ -301,6 +340,54 @@ struct FeedView: View {
             .padding(.top, DreamMetric.sm)
         }
         .padding(DreamMetric.xl)
+    }
+
+    /// Shown when a moderator has banned this account from the shared feed. It
+    /// stands where the sign-in gate does, because a ban puts them back exactly
+    /// where an account-less dreamer stands: their journal is theirs, the feed
+    /// isn't. The reason (and any end date) comes from the moderator.
+    private var bannedGate: some View {
+        VStack(spacing: DreamMetric.md) {
+            Image(systemName: "hand.raised")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(Color.dreamPrimary)
+            Text("You can't use the dream feed")
+                .font(.dreamSectionHeader)
+                .multilineTextAlignment(.center)
+            Text(banExplanation)
+                .font(.dreamBodyText)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if let reason = auth.ban?.reason, !reason.isEmpty {
+                Text(reason)
+                    .font(.dreamBodyText)
+                    .foregroundStyle(Color.dreamText)
+                    .multilineTextAlignment(.center)
+                    .padding(DreamMetric.lg)
+                    .frame(maxWidth: .infinity)
+                    .dreamCard()
+                    .padding(.top, DreamMetric.xs)
+            }
+            Text("Your own dream journal is unaffected — it's still private and still yours.")
+                .font(.dreamCaption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, DreamMetric.xs)
+        }
+        .padding(DreamMetric.xl)
+    }
+
+    /// The headline explanation on the banned gate: permanent, or with an end date.
+    private var banExplanation: String {
+        guard let ends = auth.ban?.expiresAt else {
+            return String(
+                localized: "A moderator has removed your access to the feed and to other dreamers' profiles."
+            )
+        }
+        let formatted = ends.formatted(date: .abbreviated, time: .shortened)
+        return String(
+            localized: "A moderator has removed your access to the feed and to other dreamers' profiles until \(formatted)."
+        )
     }
 
     private var emptyState: some View {

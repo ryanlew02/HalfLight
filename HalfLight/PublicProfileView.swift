@@ -36,6 +36,9 @@ struct PublicProfileView: View {
     /// The follow row for this author, if one exists (empty ⇒ not following).
     @Query private var follows: [Follow]
     @State private var selectedDream: Dream?
+    /// The @handle the dreamer is about to block, driving the confirmation.
+    @State private var blockingHandle: String?
+    @Environment(\.dismiss) private var dismiss
     /// This author's follower / following counts, fetched from the backend.
     @State private var followCounts: FollowCounts = .zero
 
@@ -124,6 +127,33 @@ struct PublicProfileView: View {
         #endif
         .navigationDestination(item: $selectedDream) { dream in
             DreamDetailView(dream: dream)
+        }
+        .toolbar {
+            // Blocking belongs on the profile as much as on a single dream — this
+            // is where you end up when someone is bothering you.
+            if !isOwnProfile {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button(role: .destructive) {
+                            SoundManager.shared.play(.tap)
+                            blockingHandle = author.username
+                        } label: {
+                            Label("Block @\(author.username)", systemImage: "hand.raised.slash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("More")
+                }
+            }
+        }
+        .blockConfirmation(handle: $blockingHandle) { handle in
+            if await auth.blockUser(username: handle) {
+                store.purgeAuthor(username: handle)
+                store.reconcileFeed()
+                // Nothing left to show on a blocked dreamer's profile.
+                dismiss()
+            }
         }
         .task(id: author.username) {
             followCounts = await auth.followCounts(for: author.username)

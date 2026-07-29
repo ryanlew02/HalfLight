@@ -69,24 +69,32 @@ extension DreamSnapshot {
     }
 }
 
-/// A one-shot, cross-process request to jump straight into capturing a dream with
-/// dictation already running. Set by `QuickRecordIntent` (from a widget, the
-/// Control, or Siri) and consumed by the app the next time it becomes active.
+/// A one-shot, cross-process request to jump straight into a new dream. Set by
+/// `JournalDreamIntent` (a widget or the Control, which open the entry silently)
+/// or `QuickRecordIntent` (Siri, which starts dictation since the ask was spoken),
+/// and consumed by the app the next time it becomes active.
 enum QuickRecordSignal {
     private static let key = "pendingQuickRecordAt"
+    private static let dictateKey = "pendingQuickRecordDictates"
     private static var defaults: UserDefaults? { UserDefaults(suiteName: SharedGroup.id) }
 
-    /// Record that the dreamer asked to capture a dream from outside the app.
-    static func request() {
+    /// Record that the dreamer asked to capture a dream from outside the app, and
+    /// whether that entry point wants dictation running when it opens.
+    static func request(dictating: Bool) {
         defaults?.set(Date.now.timeIntervalSince1970, forKey: key)
+        defaults?.set(dictating, forKey: dictateKey)
     }
 
-    /// Consume a pending request, returning `true` only when one was set recently.
-    /// The freshness window guards against firing on an unrelated later launch.
-    static func consume(within window: TimeInterval = 30) -> Bool {
-        guard let defaults, defaults.object(forKey: key) != nil else { return false }
+    /// Consume a pending request, returning whether it asked for dictation — or
+    /// `nil` when none is pending. The freshness window guards against firing on
+    /// an unrelated later launch.
+    static func consume(within window: TimeInterval = 30) -> Bool? {
+        guard let defaults, defaults.object(forKey: key) != nil else { return nil }
         let timestamp = defaults.double(forKey: key)
+        let dictating = defaults.bool(forKey: dictateKey)
         defaults.removeObject(forKey: key)
-        return Date.now.timeIntervalSince1970 - timestamp < window
+        defaults.removeObject(forKey: dictateKey)
+        guard Date.now.timeIntervalSince1970 - timestamp < window else { return nil }
+        return dictating
     }
 }

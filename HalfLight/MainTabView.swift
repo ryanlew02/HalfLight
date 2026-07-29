@@ -79,9 +79,10 @@ struct MainTabView: View {
                 }
             }
             // Morning quick-capture: opened from a widget / Control / Siri, this
-            // sheet starts a new dream with dictation already running, from any tab.
+            // sheet starts a new dream from any tab — silently for taps, with
+            // dictation already running when the request came from Siri.
             .fullScreenCover(isPresented: $router.quickRecord) {
-                AddDreamView(autoDictate: true) { draft in
+                AddDreamView(autoDictate: router.quickRecordDictates) { draft in
                     let earnedXP = !hasJournalXPToday
                     store.add(draft)
                     if earnedXP {
@@ -172,9 +173,12 @@ struct MainTabView: View {
     }
 
     /// Honor a pending widget / Control / Siri "record a dream" request by opening
-    /// the quick-capture sheet. The signal is one-shot and freshness-gated.
+    /// the quick-capture sheet, dictating only if that entry point asked for it.
+    /// The signal is one-shot and freshness-gated.
     private func consumeQuickRecordRequest() {
-        if QuickRecordSignal.consume() { router.quickRecord = true }
+        guard let dictating = QuickRecordSignal.consume() else { return }
+        router.quickRecordDictates = dictating
+        router.quickRecord = true
     }
 
     /// Whether today has already banked its once-per-day journaling XP, so the

@@ -30,6 +30,8 @@ struct FeedPostCard: View {
     var onComment: () -> Void = {}
     /// Report this dream. Fired from the card's long-press context menu.
     var onReport: () -> Void = {}
+    /// Block this dream's author. Fired from the card's long-press context menu.
+    var onBlock: () -> Void = {}
     /// Record that this card was shown (one impression). Drives the conversion rate.
     var onImpression: () -> Void = {}
 
@@ -87,6 +89,12 @@ struct FeedPostCard: View {
                 onReport()
             } label: {
                 Label("Report Dream", systemImage: "flag")
+            }
+            Button(role: .destructive) {
+                SoundManager.shared.play(.tap)
+                onBlock()
+            } label: {
+                Label("Block @\(post.authorUsername)", systemImage: "hand.raised.slash")
             }
         }
         .onAppear(perform: onImpression)

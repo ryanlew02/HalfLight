@@ -191,15 +191,58 @@ final class SubscriptionManager {
 
     // MARK: - Server sync
 
+    /// Make sure the server knows about this device's entitlement, re-running a
+    /// sync that hasn't succeeded yet. Returns true when the server should now see
+    /// the dreamer as subscribed.
+    ///
+    /// The AI functions gate on the server's row, not on `isSubscribed`, so a
+    /// dropped sync is exactly what makes someone who just paid look unsubscribed.
+    /// Call this when a request comes back refused and retry it on `true`.
+    @discardableResult
+    func ensureServerEntitlement() async -> Bool {
+        await refreshEntitlement()
+        guard isSubscribed else { return false }
+        if lastSyncSucceeded { return true }
+        await syncToServer()
+        return lastSyncSucceeded
+    }
+
     /// POST the latest verified transaction's signed JWS to the `sync-subscription`
-    /// edge function so the server records the entitlement. Best-effort: the App
-    /// Store Server Notifications webhook is the durable backstop, so failures here
-    /// are silent (the listener will retry on the next update).
+    /// edge function so the server records the entitlement. Retried a couple of
+    /// times over a few seconds, since this is what stands between paying and using
+    /// the AI features; the App Store Server Notifications webhook is the durable
+    /// backstop for anything that still doesn't land.
     private func syncToServer() async {
         lastSyncSucceeded = false
-        guard let jws = await latestTransactionJWS() else { return }
-        guard let accessToken = await currentAccessToken() else { return }
 
+        for (attempt, delay) in Self.syncAttemptDelays.enumerated() {
+            if attempt > 0 { try? await Task.sleep(for: delay) }
+            // Re-read both each time: the access token may have refreshed, and a
+            // sign-in may have arrived between attempts.
+            guard let jws = await latestTransactionJWS(),
+                  let accessToken = await currentAccessToken() else { return }
+
+            let status = await postSync(jws: jws, accessToken: accessToken)
+            if let status, (200..<300).contains(status) {
+                lastSyncSucceeded = true
+                return
+            }
+            // A rejected purchase (400) or a bad route won't fix itself; only
+            // network failures, expired tokens and server errors are worth another go.
+            if let status, !Self.retriableSyncStatuses.contains(status) { return }
+        }
+    }
+
+    /// Waits before each sync attempt — the first goes out immediately.
+    private static let syncAttemptDelays: [Duration] = [.zero, .milliseconds(600), .seconds(3)]
+
+    /// Sync failures worth retrying: an expired token, a timeout, rate limiting,
+    /// or a server-side hiccup.
+    private static let retriableSyncStatuses: Set<Int> = [401, 408, 429, 500, 502, 503, 504]
+
+    /// One attempt at recording the entitlement. Returns the HTTP status, or `nil`
+    /// when the request never reached the server.
+    private func postSync(jws: String, accessToken: String) async -> Int? {
         let endpoint = SupabaseConfig.url
             .appendingPathComponent("functions/v1/sync-subscription")
         var request = URLRequest(url: endpoint)
@@ -210,9 +253,8 @@ final class SubscriptionManager {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try? JSONEncoder().encode(["jws": jws])
 
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
-              let status = (response as? HTTPURLResponse)?.statusCode else { return }
-        lastSyncSucceeded = (200..<300).contains(status)
+        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return nil }
+        return (response as? HTTPURLResponse)?.statusCode
     }
 
     /// The signed JWS of the most recent verified Pro transaction, used by the

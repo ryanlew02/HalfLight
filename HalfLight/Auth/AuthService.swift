@@ -60,6 +60,25 @@ struct FollowCounts: Sendable, Equatable {
     static let zero = FollowCounts(followers: 0, following: 0)
 }
 
+/// A moderator's ban on this account, read from `user_bans`. Present only for the
+/// signed-in dreamer's own ban — you can never see anyone else's.
+///
+/// The ban itself is enforced server-side in RLS (see the `user_bans` migration);
+/// this exists so the app can explain what happened instead of showing an
+/// inexplicably empty feed.
+struct BanInfo: Sendable, Equatable {
+    /// The moderator's plain-language reason, if they gave one.
+    let reason: String?
+    /// When the ban lifts; `nil` for a permanent ban.
+    let expiresAt: Date?
+
+    /// Whether the ban is in force right now (an expired row is just history).
+    var isActive: Bool {
+        guard let expiresAt else { return true }
+        return expiresAt > Date()
+    }
+}
+
 /// The result of creating an account: the resolved email and whether the user
 /// must confirm it (via the emailed link) before a session exists.
 struct SignUpOutcome: Sendable {
@@ -117,6 +136,10 @@ protocol AuthBackend: Sendable {
     func updateAvatar(_ data: Data?) async throws
     /// The current user's profile photo, if one has been uploaded.
     func fetchAvatar() async -> Data?
+    /// The signed-in dreamer's own ban, if a moderator has banned them. `nil` when
+    /// they aren't banned *or* the server couldn't be reached — the ban is enforced
+    /// in RLS, so the app never has to guess on their behalf.
+    func fetchBan() async -> BanInfo?
     /// Other dreamers' profile photos, keyed by lowercased username. Absent for
     /// anyone who hasn't set a photo. Powers avatars on social surfaces (the feed
     /// and comments) where only the author's @handle is known.
@@ -131,6 +154,14 @@ protocol AuthBackend: Sendable {
     /// Dreamers whose @handle or display name matches `query`, for the feed's
     /// account search. Best-effort — empty when the server can't be reached.
     func searchProfiles(query: String, limit: Int) async -> [FollowProfile]
+    /// Block a dreamer: neither of you sees the other's dreams, comments, profile
+    /// or activity again, and any follow between you is dropped. Throws so the UI
+    /// can tell the dreamer it didn't take rather than silently pretending.
+    func blockUser(username: String) async throws
+    /// Lift a block.
+    func unblockUser(username: String) async throws
+    /// Everyone the signed-in dreamer has blocked, for the Blocked Accounts screen.
+    func blockedAccounts() async -> [FollowProfile]
     /// The completed Lucid Path lesson IDs stored on the account. `nil` when the
     /// server couldn't be reached, so a failed fetch never clobbers local progress.
     func fetchLucidProgress() async -> [String]?
@@ -194,6 +225,9 @@ final class AuthService {
     private(set) var bio: String?
     /// When the username was last changed (drives the 30-day cooldown).
     private(set) var usernameChangedAt: Date?
+    /// The moderator ban on this account, if there is one. Drives the feed's banned
+    /// gate; the ban itself is enforced server-side in RLS.
+    private(set) var ban: BanInfo?
     var isWorking = false
     var errorMessage: String?
     /// A transient success message (e.g. password-reset confirmation).
@@ -226,6 +260,10 @@ final class AuthService {
     private var appleNonce: String?
 
     var isSignedIn: Bool { status == .signedIn }
+
+    /// Signed in but banned from the shared feed. The social surfaces treat this
+    /// like having no account at all — see `FeedView`'s banned gate.
+    var isBanned: Bool { isSignedIn && (ban?.isActive ?? false) }
 
     /// Signed in but without a username yet — the app gates onboarding on this.
     var needsProfileSetup: Bool { isSignedIn && (username?.isEmpty ?? true) }
@@ -297,6 +335,18 @@ final class AuthService {
             await hydrateProfileIfNeeded()
         }
         await hydrateAvatarIfNeeded()
+        await refreshBan()
+    }
+
+    /// Re-read this account's ban. Cheap and best-effort, so it's safe to call on
+    /// launch, on sign-in, and whenever the feed appears — that last one is how a
+    /// ban (or an unban) reaches a session that's already running.
+    func refreshBan() async {
+        guard isSignedIn else {
+            ban = nil
+            return
+        }
+        ban = await backend.fetchBan()
     }
 
     /// Keep the local profile photo and the account's copy in step:
@@ -353,6 +403,39 @@ final class AuthService {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         return await backend.searchProfiles(query: trimmed, limit: limit)
+    }
+
+    // MARK: - Blocking
+
+    /// Block a dreamer. Afterwards neither of you sees the other anywhere in the
+    /// app and any follow between you is gone — the server does all of that; the
+    /// caller is responsible for clearing the local cache (see
+    /// `DreamStore.purgeAuthor`). Returns whether it took, so the UI can say so.
+    @discardableResult
+    func blockUser(username: String) async -> Bool {
+        do {
+            try await backend.blockUser(username: username)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func unblockUser(username: String) async -> Bool {
+        do {
+            try await backend.unblockUser(username: username)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// The dreamers this account has blocked, newest first.
+    func blockedAccounts() async -> [FollowProfile] {
+        await backend.blockedAccounts()
     }
 
     // MARK: - Lucid Path progress (tied to the account, like dreams)
@@ -712,6 +795,7 @@ final class AuthService {
             lastEntry = .signedUp
             status = .signedIn
             await hydrateAvatarIfNeeded()
+            await refreshBan()
         } catch {
             emailConfirmError = error.localizedDescription
         }
@@ -909,6 +993,7 @@ final class AuthService {
             lastName = nil
             bio = nil
             usernameChangedAt = nil
+            ban = nil
             status = .signedOut
         } catch {
             errorMessage = error.localizedDescription
@@ -933,6 +1018,7 @@ final class AuthService {
             lastName = nil
             bio = nil
             usernameChangedAt = nil
+            ban = nil
             status = .signedOut
             return true
         } catch {
@@ -1035,6 +1121,7 @@ final class AuthService {
             lastEntry = (username?.isEmpty ?? true) ? .signedUp : .signedIn
             status = .signedIn
             await hydrateAvatarIfNeeded()
+            await refreshBan()
             return nil
         } catch {
             errorMessage = error.localizedDescription
@@ -1147,6 +1234,15 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.data(forKey: "mockAvatar")
     }
 
+    /// Local-only stand-in for a moderator ban, so the banned state can be driven
+    /// in previews and on a build with no backend: set `mockBanned` to true (and
+    /// optionally `mockBanReason`).
+    func fetchBan() async -> BanInfo? {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: "mockBanned") else { return nil }
+        return BanInfo(reason: defaults.string(forKey: "mockBanReason"), expiresAt: nil)
+    }
+
     func fetchAvatars(usernames: [String]) async -> [String: Data] {
         // Single-device mock: only our own photo is known, keyed by our handle.
         guard let data = UserDefaults.standard.data(forKey: "mockAvatar"),
@@ -1165,6 +1261,32 @@ final class MockAuthBackend: AuthBackend {
     func following(of username: String) async -> [FollowProfile] { [] }
 
     func searchProfiles(query: String, limit: Int) async -> [FollowProfile] { [] }
+
+    /// The mock keeps blocks in UserDefaults so the Blocked Accounts screen and
+    /// the block/unblock buttons work on a build with no backend.
+    private var mockBlockedKey: String { "mockBlockedUsernames" }
+
+    func blockUser(username: String) async throws {
+        var blocked = UserDefaults.standard.stringArray(forKey: mockBlockedKey) ?? []
+        let handle = username.lowercased()
+        guard !blocked.contains(handle) else { return }
+        blocked.append(handle)
+        UserDefaults.standard.set(blocked, forKey: mockBlockedKey)
+    }
+
+    func unblockUser(username: String) async throws {
+        let blocked = UserDefaults.standard.stringArray(forKey: mockBlockedKey) ?? []
+        UserDefaults.standard.set(
+            blocked.filter { $0 != username.lowercased() },
+            forKey: mockBlockedKey
+        )
+    }
+
+    func blockedAccounts() async -> [FollowProfile] {
+        (UserDefaults.standard.stringArray(forKey: mockBlockedKey) ?? []).map {
+            FollowProfile(username: $0, name: $0.capitalized, photo: nil)
+        }
+    }
 
     func fetchLucidProgress() async -> [String]? {
         // The mock is always "reachable", so report an empty set (not nil) when
@@ -1507,6 +1629,31 @@ final class SupabaseAuthBackend: AuthBackend {
         return Data(base64Encoded: encoded)
     }
 
+    /// The dreamer's own ban row. RLS scopes `user_bans` to `user_id = auth.uid()`,
+    /// so this can only ever return *their* ban — and an unreachable server reads
+    /// as "no ban", which is safe because the ban is enforced in RLS, not here.
+    func fetchBan() async -> BanInfo? {
+        guard SupabaseConfig.isConfigured else { return nil }
+        struct BanRow: Decodable {
+            let reason: String?
+            let expiresAt: Date?
+            enum CodingKeys: String, CodingKey {
+                case reason
+                case expiresAt = "expires_at"
+            }
+        }
+        let rows: [BanRow]? = try? await client
+            .from("user_bans")
+            .select("reason, expires_at")
+            .limit(1)
+            .execute()
+            .value
+        guard let row = rows?.first else { return nil }
+        let ban = BanInfo(reason: row.reason, expiresAt: row.expiresAt)
+        // An expired row is history, not a ban.
+        return ban.isActive ? ban : nil
+    }
+
     func fetchAvatars(usernames: [String]) async -> [String: Data] {
         guard SupabaseConfig.isConfigured, !usernames.isEmpty else { return [:] }
         struct AvatarRow: Decodable { let username: String; let avatar: String? }
@@ -1578,6 +1725,40 @@ final class SupabaseAuthBackend: AuthBackend {
         // rather than being an injection risk.
         let rows: [Row]? = try? await client
             .rpc("search_profiles", params: Params(p_query: query, p_limit: limit))
+            .execute()
+            .value
+        guard let rows else { return [] }
+        return rows.map { row in
+            FollowProfile(
+                username: row.username,
+                name: row.name,
+                photo: row.avatar.flatMap { Data(base64Encoded: $0) }
+            )
+        }
+    }
+
+    func blockUser(username: String) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        // The RPC resolves the @handle, records the block and tears down any
+        // follow in either direction, all server-side.
+        try await client
+            .rpc("block_user", params: ["p_username": username])
+            .execute()
+    }
+
+    func unblockUser(username: String) async throws {
+        guard SupabaseConfig.isConfigured else { throw notConfigured }
+        try await client
+            .rpc("unblock_user", params: ["p_username": username])
+            .execute()
+    }
+
+    func blockedAccounts() async -> [FollowProfile] {
+        guard SupabaseConfig.isConfigured else { return [] }
+        struct Row: Decodable { let username: String; let name: String; let avatar: String? }
+        // Scoped to the caller inside the RPC — you only ever get your own list.
+        let rows: [Row]? = try? await client
+            .rpc("blocked_accounts")
             .execute()
             .value
         guard let rows else { return [] }

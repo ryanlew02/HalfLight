@@ -70,3 +70,15 @@ fastlane/test_output
 # APNs / signing keys — secrets, never commit
 *.p8
 AuthKey_*.p8
+
+# Node / Next.js (web-admin)
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+
+# Local env files — never commit secrets
+.env
+.env.*
+!.env.example

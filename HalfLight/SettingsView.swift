@@ -510,6 +510,15 @@ struct AccountSettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        BlockedAccountsView()
+                    } label: {
+                        SettingRow(title: "Blocked Accounts", systemImage: "hand.raised.slash", value: nil)
+                    }
+                }
+                .listRowBackground(Color.dreamSurface)
+
+                Section {
                     Button(role: .destructive) {
                         Task { await auth.signOut() }
                     } label: {

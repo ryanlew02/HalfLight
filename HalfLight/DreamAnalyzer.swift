@@ -50,6 +50,13 @@ final class DreamAnalyzer {
     /// A user-facing message when a request fails; `nil` when there's no error.
     private(set) var errorMessage: String?
 
+    /// Called when the server refuses a request because it sees no subscription.
+    /// Should push the device's entitlement to the server and report whether it
+    /// landed; a `true` gets the request retried once. Set by the views that own a
+    /// `SubscriptionManager`, so someone who subscribes mid-journal can use the AI
+    /// features immediately rather than waiting for the entitlement to catch up.
+    var recoverEntitlement: (() async -> Bool)?
+
     /// Analyze a dream into a category + meaning. Returns `nil` (and sets
     /// `errorMessage`) on failure.
     func analyze(title: String, entry: String, mood: String) async -> DreamAnalysis? {
@@ -94,7 +101,17 @@ final class DreamAnalyzer {
 
     // MARK: - Networking
 
-    /// POST the dream to a Supabase Edge Function and decode its JSON response.
+    /// The three ways a request can end: with a value, refused as unsubscribed
+    /// (which a just-completed purchase can heal), or failed for any other reason.
+    private enum PostOutcome<T> {
+        case success(T)
+        case notSubscribed
+        case failed
+    }
+
+    /// POST the dream to a Supabase Edge Function and decode its JSON response,
+    /// re-registering the entitlement and trying once more if the server says the
+    /// dreamer isn't subscribed.
     private func post<T: Decodable>(
         function: String,
         title: String,
@@ -102,13 +119,39 @@ final class DreamAnalyzer {
         mood: String,
         as type: T.Type
     ) async -> T? {
+        switch await send(function: function, title: title, entry: entry, mood: mood, as: type) {
+        case .success(let value):
+            return value
+        case .failed:
+            return nil
+        case .notSubscribed:
+            // Most likely a purchase that hasn't reached the server yet. Push the
+            // entitlement across and, if that works, run the request again — the
+            // gate checks the subscription before spending a daily credit, so the
+            // refused attempt cost the dreamer nothing.
+            guard let recoverEntitlement, await recoverEntitlement() else { return nil }
+            guard case .success(let value) = await send(
+                function: function, title: title, entry: entry, mood: mood, as: type
+            ) else { return nil }
+            return value
+        }
+    }
+
+    /// A single request to an AI edge function.
+    private func send<T: Decodable>(
+        function: String,
+        title: String,
+        entry: String,
+        mood: String,
+        as type: T.Type
+    ) async -> PostOutcome<T> {
         errorMessage = nil
 
         // The functions verify the dreamer's JWT and enforce a per-user daily
         // limit, so the request must carry the signed-in user's access token.
         guard let accessToken = await currentAccessToken() else {
             errorMessage = "Sign in to use AI features."
-            return nil
+            return .failed
         }
 
         let endpoint = SupabaseConfig.url
@@ -130,7 +173,7 @@ final class DreamAnalyzer {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 errorMessage = "No response from the server."
-                return nil
+                return .failed
             }
             guard (200..<300).contains(http.statusCode) else {
                 // Surface the server's message (daily limit reached, sign-in
@@ -140,15 +183,16 @@ final class DreamAnalyzer {
                 } else {
                     errorMessage = "Request failed (\(http.statusCode)). Please try again."
                 }
-                return nil
+                // 402 is the gate's "no active subscription" — recoverable.
+                return http.statusCode == 402 ? .notSubscribed : .failed
             }
-            return try JSONDecoder().decode(T.self, from: data)
+            return .success(try JSONDecoder().decode(T.self, from: data))
         } catch is DecodingError {
             errorMessage = "Got an unexpected response from the server."
-            return nil
+            return .failed
         } catch {
             errorMessage = "Couldn't reach the server. Check your connection."
-            return nil
+            return .failed
         }
     }
 

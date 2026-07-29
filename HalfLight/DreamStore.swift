@@ -66,6 +66,11 @@ final class DreamStore {
     /// clear it. `nil` when there's nothing to surface.
     var rateLimitNotice: String?
 
+    /// Posts a screen is currently showing (a search result opened for reading).
+    /// `mergeFeed`'s sweep skips these so a background refresh can't delete a model
+    /// that's on screen. See `pinPost(_:)`.
+    private var pinnedPostIDs: Set<UUID> = []
+
     init(context: ModelContext, sync: DreamSyncing? = nil, feedSync: FeedSyncing? = nil) {
         self.context = context
         self.sync = sync
@@ -219,6 +224,61 @@ final class DreamStore {
         // and the owner marker is cleared until the next sign-in re-stamps it.
         UserDefaults.standard.removeObject(forKey: "didRepublishVisibility_v1")
         UserDefaults.standard.removeObject(forKey: Self.lastOwnerKey)
+    }
+
+    /// Drop everything the shared feed put on this device — other dreamers' posts,
+    /// their comments, the follow graph and feed activity — while leaving the
+    /// dreamer's own journal completely alone.
+    ///
+    /// Called when a ban is detected. The server already refuses to serve any of
+    /// this (see the `user_bans` RLS policies), but the local cache would happily
+    /// keep showing the last feed they pulled, so it has to go too. Their own posts
+    /// stay: they're the local mirror of their journal's shared dreams, and they
+    /// re-publish normally if the ban is lifted.
+    func wipeSocialCache() {
+        let me = currentAuthor().username.lowercased()
+        let posts = (try? context.fetch(FetchDescriptor<FeedPost>())) ?? []
+        for post in posts where post.authorUsername.lowercased() != me {
+            deleteCachedComments(postID: post.id)
+            context.delete(post)
+        }
+        deleteAll(Comment.self)
+        deleteAll(Follow.self)
+        deleteAll(AppNotification.self)
+        save()
+    }
+
+    /// Drop everything one dreamer left on this device — their posts, their
+    /// comments anywhere, the follow row for them, and their activity entries.
+    ///
+    /// Called right after blocking them. The server stops serving any of it from
+    /// the next request on, but the local cache would otherwise keep showing the
+    /// person the dreamer just chose not to see.
+    func purgeAuthor(username: String) {
+        let handle = username.lowercased()
+
+        let posts = (try? context.fetch(FetchDescriptor<FeedPost>())) ?? []
+        for post in posts where post.authorUsername.lowercased() == handle {
+            deleteCachedComments(postID: post.id)
+            context.delete(post)
+        }
+
+        let comments = (try? context.fetch(FetchDescriptor<Comment>())) ?? []
+        for comment in comments where comment.authorUsername.lowercased() == handle {
+            context.delete(comment)
+        }
+
+        let follows = (try? context.fetch(FetchDescriptor<Follow>())) ?? []
+        for follow in follows where follow.username.lowercased() == handle {
+            context.delete(follow)
+        }
+
+        let notes = (try? context.fetch(FetchDescriptor<AppNotification>())) ?? []
+        for note in notes where note.actorUsername.lowercased() == handle {
+            context.delete(note)
+        }
+
+        save()
     }
 
     private func deleteAll<T: PersistentModel>(_ type: T.Type) {
@@ -710,32 +770,104 @@ final class DreamStore {
             // wipe the local follow set. Only merge when the fetch succeeds; a
             // genuinely empty feed still returns [] and reconciles normally.
             guard let remotePosts = try? await feedSync.fetchFeed(limit: 200) else { return }
-            let likedIDs = (try? await feedSync.likedPostIDs()) ?? []
-            let followed = (try? await feedSync.followedUsernames()) ?? []
-            await mergeFeed(remote: remotePosts, liked: Set(likedIDs), followed: followed)
+            // The same rule applies to the two companion lookups, which are separate
+            // requests and can fail on their own: `nil` means "didn't hear back", and
+            // the merge leaves that part of the local state alone. Treating a failure
+            // as an empty set would silently unlike every post and wipe the follow
+            // list — both of which look to the dreamer like data loss.
+            let likedIDs = try? await feedSync.likedPostIDs()
+            let followed = try? await feedSync.followedUsernames()
+            await mergeFeed(
+                remote: remotePosts,
+                liked: likedIDs.map(Set.init),
+                followed: followed
+            )
         }
     }
 
-    private func mergeFeed(remote: [FeedPostRecord], liked: Set<UUID>, followed: [String]) async {
+    /// Cache a post found in search so it can be liked and commented on — both need
+    /// a local `FeedPost`. A post already in the feed cache is updated in place (its
+    /// like state is local truth, so it's left alone); anything new is inserted
+    /// flagged as a search result, keeping it out of the feed's own query.
+    @discardableResult
+    func cachePost(_ record: FeedPostRecord) -> FeedPost {
+        let id = record.id
+        let descriptor = FetchDescriptor<FeedPost>(predicate: #Predicate<FeedPost> { $0.id == id })
+        if let existing = try? context.fetch(descriptor).first {
+            apply(record, to: existing)
+            save()
+            return existing
+        }
+        let post = FeedPost(
+            id: record.id,
+            dreamID: record.dreamID,
+            authorUsername: record.authorUsername,
+            authorName: record.authorName,
+            title: record.title,
+            dreamDescription: record.dreamDescription,
+            createdAt: record.createdAt,
+            likeCount: record.likeCount,
+            isLiked: false,
+            commentCount: record.commentCount,
+            viewCount: record.viewCount,
+            mood: record.mood,
+            tags: record.tags ?? [],
+            aiCategory: record.aiCategory,
+            aiMeaning: record.aiMeaning,
+            aiThemes: record.aiThemes ?? [],
+            isSearchResult: true
+        )
+        context.insert(post)
+        save()
+        return post
+    }
+
+    /// Fill in whether the dreamer has liked a post opened from search — the search
+    /// query returns counts but not the caller's own like state. Best-effort: a
+    /// failed lookup leaves the local heart as it is.
+    func refreshLikeState(for post: FeedPost) async {
+        guard let feedSync, let liked = try? await feedSync.likedPostIDs() else { return }
+        let isLiked = Set(liked).contains(post.id)
+        guard post.isLiked != isLiked else { return }
+        post.isLiked = isLiked
+        save()
+    }
+
+    /// Keep a post out of `mergeFeed`'s sweep while the dreamer is reading it, so a
+    /// refresh can't delete the model out from under an open screen.
+    func pinPost(_ id: UUID) { pinnedPostIDs.insert(id) }
+    func unpinPost(_ id: UUID) { pinnedPostIDs.remove(id) }
+
+    /// Copy a server record's content and counts onto a cached post. Like state is
+    /// owned locally (the caller applies it), and the author photo snapshot is kept.
+    private func apply(_ record: FeedPostRecord, to post: FeedPost) {
+        post.title = record.title
+        post.dreamDescription = record.dreamDescription
+        post.authorUsername = record.authorUsername
+        post.authorName = record.authorName
+        post.likeCount = record.likeCount
+        post.viewCount = record.viewCount
+        post.commentCount = record.commentCount
+        post.mood = record.mood
+        post.tags = record.tags ?? []
+        post.aiCategory = record.aiCategory
+        post.aiMeaning = record.aiMeaning
+        post.aiThemes = record.aiThemes ?? []
+    }
+
+    /// `liked` / `followed` are `nil` when that lookup failed, in which case the
+    /// corresponding local state is left untouched rather than being cleared.
+    private func mergeFeed(remote: [FeedPostRecord], liked: Set<UUID>?, followed: [String]?) async {
         let locals = (try? context.fetch(FetchDescriptor<FeedPost>())) ?? []
         var localByID = Dictionary(locals.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let remoteIDs = Set(remote.map(\.id))
 
         for record in remote {
             if let post = localByID[record.id] {
-                post.title = record.title
-                post.dreamDescription = record.dreamDescription
-                post.authorUsername = record.authorUsername
-                post.authorName = record.authorName
-                post.likeCount = record.likeCount
-                post.viewCount = record.viewCount
-                post.commentCount = record.commentCount
-                post.isLiked = liked.contains(record.id)
-                post.mood = record.mood
-                post.tags = record.tags ?? []
-                post.aiCategory = record.aiCategory
-                post.aiMeaning = record.aiMeaning
-                post.aiThemes = record.aiThemes ?? []
+                apply(record, to: post)
+                if let liked { post.isLiked = liked.contains(record.id) }
+                // It's in the feed window now, so it's no longer search-only.
+                post.isSearchResult = false
             } else {
                 let post = FeedPost(
                     id: record.id,
@@ -746,7 +878,7 @@ final class DreamStore {
                     dreamDescription: record.dreamDescription,
                     createdAt: record.createdAt,
                     likeCount: record.likeCount,
-                    isLiked: liked.contains(record.id),
+                    isLiked: liked?.contains(record.id) ?? false,
                     commentCount: record.commentCount,
                     viewCount: record.viewCount,
                     mood: record.mood,
@@ -762,38 +894,62 @@ final class DreamStore {
 
         // Drop *others'* local posts that no longer exist remotely. Our own posts
         // are managed locally by `syncFeedPost`, and a fresh one may not have
-        // round-tripped to the server yet, so never delete those here.
+        // round-tripped to the server yet, so never delete those here — nor a post
+        // pinned by a screen that's currently reading it.
         let me = currentAuthor().username.lowercased()
-        for post in locals where !remoteIDs.contains(post.id) && post.authorUsername.lowercased() != me {
+        for post in locals
+        where !remoteIDs.contains(post.id)
+            && !pinnedPostIDs.contains(post.id)
+            && post.authorUsername.lowercased() != me {
+            // Take the post's cached comments with it, or they'd outlive it as
+            // orphans (they're keyed by post id, not a SwiftData relationship).
+            deleteCachedComments(postID: post.id)
             context.delete(post)
         }
 
-        // Mirror the follow set locally.
-        let followedSet = Set(followed.map { $0.lowercased() })
-        let localFollows = (try? context.fetch(FetchDescriptor<Follow>())) ?? []
-        for follow in localFollows where !followedSet.contains(follow.username.lowercased()) {
-            context.delete(follow)
-        }
-        let existingLocal = Set(localFollows.map { $0.username.lowercased() })
-        for username in followed where !existingLocal.contains(username.lowercased()) {
-            context.insert(Follow(username: username))
+        // Mirror the follow set locally — but only when we actually heard back.
+        if let followed {
+            let followedSet = Set(followed.map { $0.lowercased() })
+            let localFollows = (try? context.fetch(FetchDescriptor<Follow>())) ?? []
+            for follow in localFollows where !followedSet.contains(follow.username.lowercased()) {
+                context.delete(follow)
+            }
+            let existingLocal = Set(localFollows.map { $0.username.lowercased() })
+            for username in followed where !existingLocal.contains(username.lowercased()) {
+                context.insert(Follow(username: username))
+            }
         }
 
         save()
     }
 
     /// Pull a post's comments into the local cache so the comments sheet shows
-    /// everyone's, not just this device's.
-    func reconcileComments(postID: UUID) {
-        guard let feedSync else { return }
-        Task {
-            async let remote = (try? await feedSync.fetchComments(postID: postID)) ?? []
-            async let liked = (try? await feedSync.likedCommentIDs(postID: postID)) ?? []
-            await mergeComments(remote: remote, liked: Set(liked), postID: postID)
+    /// everyone's, not just this device's. Returns whether a fresh server snapshot
+    /// actually landed — the sheet renders the local cache, so a failed fetch must
+    /// leave it untouched (merging `[]` would blank a thread that has comments)
+    /// and tell the caller to show a retry rather than "no comments yet".
+    @discardableResult
+    func reconcileComments(postID: UUID) async -> Bool {
+        guard let feedSync else { return false }
+        async let remoteTask = try? await feedSync.fetchComments(postID: postID)
+        async let likedTask = try? await feedSync.likedCommentIDs(postID: postID)
+        guard let remote = await remoteTask else { return false }
+        // `nil` when only the likes lookup failed: keep whatever hearts we have
+        // rather than silently un-liking everything.
+        let liked = await likedTask.map(Set.init)
+        await mergeComments(remote: remote, liked: liked, postID: postID)
+        return true
+    }
+
+    /// Drop a post's cached comments, for when the post itself leaves the cache.
+    private func deleteCachedComments(postID: UUID) {
+        let descriptor = FetchDescriptor<Comment>(predicate: #Predicate<Comment> { $0.postID == postID })
+        for comment in (try? context.fetch(descriptor)) ?? [] {
+            context.delete(comment)
         }
     }
 
-    private func mergeComments(remote: [FeedCommentRecord], liked: Set<UUID>, postID: UUID) async {
+    private func mergeComments(remote: [FeedCommentRecord], liked: Set<UUID>?, postID: UUID) async {
         let descriptor = FetchDescriptor<Comment>(predicate: #Predicate<Comment> { $0.postID == postID })
         let locals = (try? context.fetch(descriptor)) ?? []
         var byID = Dictionary(locals.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -805,7 +961,7 @@ final class DreamStore {
                 comment.authorUsername = record.authorUsername
                 comment.authorName = record.authorName
                 comment.likeCount = record.likeCount
-                comment.isLiked = liked.contains(record.id)
+                if let liked { comment.isLiked = liked.contains(record.id) }
             } else {
                 let comment = Comment(
                     id: record.id,
@@ -815,7 +971,7 @@ final class DreamStore {
                     text: record.text,
                     createdAt: record.createdAt,
                     likeCount: record.likeCount,
-                    isLiked: liked.contains(record.id)
+                    isLiked: liked?.contains(record.id) ?? false
                 )
                 context.insert(comment)
                 byID[record.id] = comment
@@ -839,7 +995,10 @@ final class DreamStore {
     func reconcileNotifications() {
         guard let feedSync else { return }
         Task {
-            let remote = (try? await feedSync.fetchNotifications(limit: 100)) ?? []
+            // A failed fetch is not "you have no activity": merging `[]` would make
+            // the sweep below delete every cached notification and blank the
+            // Activity screen until the next successful pull.
+            guard let remote = try? await feedSync.fetchNotifications(limit: 100) else { return }
             await mergeNotifications(remote: remote)
         }
     }

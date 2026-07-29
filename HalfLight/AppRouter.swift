@@ -42,9 +42,13 @@ final class AppRouter {
     var scrollToQuests = false
 
     /// Drives the global quick-capture sheet: set `true` by a widget/Control/Siri
-    /// request (see `QuickRecordSignal`) so a new dream with dictation already
-    /// running opens from anywhere in the app, regardless of the current tab.
+    /// request (see `QuickRecordSignal`) so a new dream opens from anywhere in the
+    /// app, regardless of the current tab.
     var quickRecord = false
+
+    /// Whether that pending quick-capture should open with dictation running —
+    /// true only for the spoken Siri shortcut; taps open a quiet, blank entry.
+    var quickRecordDictates = false
 
     /// Non-nil while the full-screen XP claim animation is showing.
     var claimReward: ClaimReward?

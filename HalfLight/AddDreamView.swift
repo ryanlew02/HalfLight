@@ -27,6 +27,9 @@ struct AddDreamView: View {
     @State private var showDeleteConfirm = false
     /// Presented when a non-subscriber taps an AI feature.
     @State private var showPaywall = false
+    /// The AI feature that sent them to the paywall, run as soon as they subscribe
+    /// so the tap they made carries through instead of being lost.
+    @State private var pendingProAction: (() -> Void)?
     /// Presented when a signed-out dreamer tries to make a dream public.
     @State private var showAuth = false
     /// Set when a public post is blocked by the content filter (slur / hate
@@ -229,14 +232,20 @@ struct AddDreamView: View {
             .onChange(of: transcriber.transcript) { _, newValue in
                 applyTranscript(newValue)
             }
-            .task { await autoStartDictationIfNeeded() }
+            .task {
+                // A brand-new subscription can beat its own record to the server;
+                // let the analyzer push it across and retry rather than telling a
+                // paying dreamer to subscribe.
+                analyzer.recoverEntitlement = { await subscriptions.ensureServerEntitlement() }
+                await autoStartDictationIfNeeded()
+            }
             // Stop listening the moment the app leaves the foreground — leaving the
             // mic live in the background would be unsettling.
             .onChange(of: scenePhase) { _, phase in
                 if phase != .active { transcriber.stop() }
             }
             .onDisappear { transcriber.stop() }
-            .sheet(isPresented: $showPaywall) { PaywallView() }
+            .sheet(isPresented: $showPaywall, onDismiss: resumePendingProAction) { PaywallView() }
             .sheet(isPresented: $showAuth) { AuthView() }
             .alert(
                 "Can't share this dream",
@@ -349,18 +358,32 @@ struct AddDreamView: View {
     }
 
     /// AI features are HalfLight Pro: a non-subscriber tap opens the paywall
-    /// instead of spending on the analysis. Returns true when Pro is active.
-    private func requirePro() -> Bool {
+    /// instead of spending on the analysis, holding on to what they reached for so
+    /// subscribing picks it straight back up.
+    private func withPro(_ action: @escaping () -> Void) {
         guard subscriptions.isSubscribed else {
             SoundManager.shared.play(.tap)
+            pendingProAction = action
             showPaywall = true
-            return false
+            return
         }
-        return true
+        action()
+    }
+
+    /// Once the paywall closes, run whatever sent them there — but only if they
+    /// actually subscribed; closing the sheet unchanged just drops the request.
+    private func resumePendingProAction() {
+        let action = pendingProAction
+        pendingProAction = nil
+        guard subscriptions.isSubscribed, let action else { return }
+        action()
     }
 
     private func autoTitle() {
-        guard requirePro() else { return }
+        withPro(performAutoTitle)
+    }
+
+    private func performAutoTitle() {
         SoundManager.shared.play(.tap)
         Task {
             guard let suggested = await analyzer.suggestTitle(
@@ -409,7 +432,10 @@ struct AddDreamView: View {
     }
 
     private func autoTag() {
-        guard requirePro() else { return }
+        withPro(performAutoTag)
+    }
+
+    private func performAutoTag() {
         SoundManager.shared.play(.tap)
         Task {
             guard let suggested = await analyzer.suggestTags(
@@ -514,7 +540,10 @@ struct AddDreamView: View {
     }
 
     private func analyze() {
-        guard requirePro() else { return }
+        withPro(performAnalyze)
+    }
+
+    private func performAnalyze() {
         SoundManager.shared.play(.tap)
         Task {
             guard let result = await analyzer.analyze(

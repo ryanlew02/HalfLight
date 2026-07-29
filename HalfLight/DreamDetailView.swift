@@ -25,6 +25,9 @@ struct DreamDetailView: View {
     @State private var profileToOpen: FeedAuthor?
     /// Presented when a non-subscriber taps Analyze with AI.
     @State private var showPaywall = false
+    /// Set when the paywall was opened by a tap on Analyze, so subscribing runs
+    /// the analysis right away instead of dropping the tap.
+    @State private var analyzeAfterPaywall = false
 
     var body: some View {
         ScrollView {
@@ -79,7 +82,13 @@ struct DreamDetailView: View {
                 store.delete(dream)
             }
         }
-        .sheet(isPresented: $showPaywall) { PaywallView() }
+        .sheet(isPresented: $showPaywall, onDismiss: resumeAnalyzeAfterPaywall) { PaywallView() }
+        .task {
+            // A brand-new subscription can beat its own record to the server; let
+            // the analyzer push it across and retry rather than telling a paying
+            // dreamer to subscribe.
+            analyzer.recoverEntitlement = { await subscriptions.ensureServerEntitlement() }
+        }
     }
 
     // MARK: - Author (feed only)
@@ -226,9 +235,19 @@ struct DreamDetailView: View {
         }
     }
 
+    /// Run the analysis once the paywall closes, if subscribing is what closed it.
+    private func resumeAnalyzeAfterPaywall() {
+        guard analyzeAfterPaywall else { return }
+        analyzeAfterPaywall = false
+        guard subscriptions.isSubscribed else { return }
+        analyze()
+    }
+
     private func analyze() {
-        // AI analysis is HalfLight Pro: send non-subscribers to the paywall.
+        // AI analysis is HalfLight Pro: send non-subscribers to the paywall, and
+        // pick this tap back up the moment they're subscribed.
         guard subscriptions.isSubscribed else {
+            analyzeAfterPaywall = true
             showPaywall = true
             return
         }

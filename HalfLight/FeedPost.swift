@@ -65,6 +65,12 @@ final class FeedPost {
     /// as "virality" — see `FeedRanker`.
     var viewCount: Int = 0
 
+    /// True for a post cached only because the dreamer opened it from search.
+    /// Liking and commenting need a local `FeedPost`, but a searched post may be
+    /// far older than the feed window — so it's kept out of the feed's query and
+    /// cleared the moment `reconcileFeed` sees it come back from the server.
+    var isSearchResult: Bool = false
+
     init(
         id: UUID = UUID(),
         dreamID: UUID,
@@ -82,7 +88,8 @@ final class FeedPost {
         tags: [String] = [],
         aiCategory: String? = nil,
         aiMeaning: String? = nil,
-        aiThemes: [String] = []
+        aiThemes: [String] = [],
+        isSearchResult: Bool = false
     ) {
         self.id = id
         self.dreamID = dreamID
@@ -101,5 +108,6 @@ final class FeedPost {
         self.aiCategory = aiCategory
         self.aiMeaning = aiMeaning
         self.aiThemes = aiThemes
+        self.isSearchResult = isSearchResult
     }
 }
