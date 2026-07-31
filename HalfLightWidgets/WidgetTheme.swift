@@ -56,10 +56,14 @@ enum DreamPrompts {
         "A dream a day keeps the haze away. Log today's."
     ]
 
-    /// Today's prompt, stable for the calendar day.
+    /// Today's prompt, stable for the calendar day, in the device language.
+    ///
+    /// The English text in `all` doubles as the String Catalog key, so a prompt
+    /// is looked up rather than shown verbatim — otherwise every locale would
+    /// get the English copy.
     static func today(_ date: Date = .now) -> String {
         let day = Calendar.current.ordinality(of: .day, in: .era, for: date) ?? 0
-        return all[day % all.count]
+        return String(localized: String.LocalizationValue(all[day % all.count]))
     }
 }
 

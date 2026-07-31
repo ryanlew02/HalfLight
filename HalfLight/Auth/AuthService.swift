@@ -122,6 +122,14 @@ protocol AuthBackend: Sendable {
     func handleEmailConfirmLink(_ url: URL) async throws
     func signIn(email: String, password: String) async throws -> String
     func signInWithApple(idToken: String, nonce: String, email: String?) async throws -> String
+    /// Hand Apple's one-time `authorizationCode` to the server, which trades it
+    /// for a refresh token and keeps it so the grant can be revoked when the
+    /// account is deleted (App Store Guideline 5.1.1(v)).
+    ///
+    /// Best-effort by design, hence non-throwing: the dreamer is already signed
+    /// in by the time this runs, and Apple's token endpoint being briefly
+    /// unavailable must not turn a successful sign-in into a failure.
+    func linkAppleAccount(authorizationCode: String) async
     /// Create the profile row for the currently signed-in user (used to finish
     /// onboarding accounts that didn't pick a username at sign-up, e.g. Apple).
     func createProfile(username: String, firstName: String, lastName: String) async throws
@@ -1065,23 +1073,54 @@ final class AuthService {
                 errorMessage = "Couldn't read your Apple credentials. Please try again."
                 return
             }
-            let appleEmail = credential.email
-            let appleName = credential.fullName
-            // `perform` pulls any existing profile + photo before flipping to
-            // signed-in, so a returning Apple user isn't asked to set up again.
-            await perform(provider: .apple) {
-                try await self.backend.signInWithApple(idToken: idToken, nonce: nonce, email: appleEmail)
+            // Apple's authorization code is single-use and expires in minutes —
+            // this is the only moment it can be captured, and without it the
+            // grant can never be revoked at deletion time.
+            let authorizationCode = credential.authorizationCode
+                .flatMap { String(data: $0, encoding: .utf8) }
+
+            await finishAppleSignIn(
+                idToken: idToken,
+                nonce: nonce,
+                email: credential.email,
+                givenName: credential.fullName?.givenName,
+                familyName: credential.fullName?.familyName,
+                authorizationCode: authorizationCode
+            )
+        }
+    }
+
+    /// The half of the Apple flow that doesn't touch `ASAuthorization`. Split out
+    /// because Apple's credential types have no public initializer, so this is the
+    /// only part that can be driven directly from tests.
+    func finishAppleSignIn(
+        idToken: String,
+        nonce: String,
+        email: String?,
+        givenName: String?,
+        familyName: String?,
+        authorizationCode: String? = nil
+    ) async {
+        // `perform` pulls any existing profile + photo before flipping to
+        // signed-in, so a returning Apple user isn't asked to set up again.
+        await perform(provider: .apple) {
+            try await self.backend.signInWithApple(idToken: idToken, nonce: nonce, email: email)
+        }
+        // Only once there's a session to authenticate the call with. Refreshed on
+        // every Apple sign-in, so a token that Apple has since invalidated gets
+        // replaced rather than going stale.
+        if status == .signedIn, let authorizationCode {
+            await backend.linkAppleAccount(authorizationCode: authorizationCode)
+        }
+        // Genuinely new account (no profile on the server): prefill the
+        // username-setup screen with the name Apple just gave us (first sign-in
+        // only — Apple won't send it again).
+        if needsProfileSetup {
+            if let givenName, (firstName?.isEmpty ?? true) {
+                firstName = givenName
             }
-            // Genuinely new account (no profile on the server): prefill the
-            // username-setup screen with the name Apple just gave us (first sign-in
-            // only — Apple won't send it again).
-            if needsProfileSetup {
-                if let given = appleName?.givenName, (firstName?.isEmpty ?? true) {
-                    firstName = given
-                }
-                if let family = appleName?.familyName, (lastName?.isEmpty ?? true) {
-                    lastName = family
-                }
+            if let familyName, (lastName?.isEmpty ?? true) {
+                lastName = familyName
             }
         }
     }
@@ -1205,6 +1244,12 @@ final class MockAuthBackend: AuthBackend {
         UserDefaults.standard.set(resolved, forKey: key)
         UserDefaults.standard.set(AuthProvider.apple.rawValue, forKey: providerKey)
         return resolved
+    }
+
+    func linkAppleAccount(authorizationCode: String) async {
+        // Nothing to exchange without a real Apple round trip; record the call so
+        // tests can assert the wiring.
+        UserDefaults.standard.set(authorizationCode, forKey: "mockAppleAuthCode")
     }
 
     func createProfile(username: String, firstName: String, lastName: String) async throws {
@@ -1924,6 +1969,27 @@ final class SupabaseAuthBackend: AuthBackend {
 
     func signOut() async throws {
         try await client.auth.signOut()
+    }
+
+    func linkAppleAccount(authorizationCode: String) async {
+        guard SupabaseConfig.isConfigured,
+              let token = (try? await client.auth.session)?.accessToken else { return }
+        // The code is worthless in the app — trading it for a refresh token needs
+        // the Sign in with Apple .p8, which lives server-side. `apple-link` does
+        // the exchange and stores the result for `delete-account` to revoke.
+        let endpoint = SupabaseConfig.url.appendingPathComponent("functions/v1/apple-link")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONEncoder().encode(["authorizationCode": authorizationCode])
+
+        // Best-effort: the dreamer is already signed in, so a failure here must
+        // stay silent. It only costs the ability to revoke at deletion, which
+        // `delete-account` handles by deleting anyway.
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     func deleteAccount() async throws {

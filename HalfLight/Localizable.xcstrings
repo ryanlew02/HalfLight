@@ -6228,6 +6228,77 @@
         }
       }
     },
+    "Are you sure you want to block @%@?": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هل أنت متأكد أنك تريد حظر ‏@%@؟"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Möchtest du @%@ wirklich blockieren?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Seguro que quieres bloquear a @%@?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voulez-vous vraiment bloquer @%@ ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vuoi davvero bloccare @%@?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "@%@ をブロックしてもよろしいですか？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "@%@ 님을 정말 차단할까요?"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weet je zeker dat je @%@ wilt blokkeren?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tem certeza de que deseja bloquear @%@?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Точно заблокировать @%@?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确定要屏蔽 @%@ 吗？"
+          }
+        }
+      }
+    },
     "Around 5–10, done with genuine attention": {
       "localizations": {
         "ar": {
@@ -7562,6 +7633,77 @@
         }
       }
     },
+    "Block @%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حظر ‏@%@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "@%@ blockieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloquear a @%@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloquer @%@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocca @%@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "@%@ をブロック"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "@%@ 차단"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "@%@ blokkeren"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloquear @%@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Заблокировать @%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "屏蔽 @%@"
+          }
+        }
+      }
+    },
     "Block this dreamer?": {
       "extractionState": "manual",
       "localizations": {
@@ -7982,6 +8124,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "明亮的光会抑制褪黑素，并向你的生物钟发出“白天到了”的信号——这正是为什么短暂、昏暗的醒来时段能恰到好处地提升清醒度，又不会把你彻底切换到早晨模式。"
+          }
+        }
+      }
+    },
+    "Build the habit": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اِبنِ العادة"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bau dir die Gewohnheit auf"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea el hábito"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installez l'habitude"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Costruisci l'abitudine"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "習慣を育てる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "습관을 만드세요"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bouw de gewoonte op"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crie o hábito"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выработайте привычку"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "养成习惯"
           }
         }
       }
@@ -8615,6 +8827,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消"
+          }
+        }
+      }
+    },
+    "Capture every dream": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "التقط كل حلم"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halte jeden Traum fest"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Captura cada sueño"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capturez chaque rêve"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cattura ogni sogno"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての夢を記録"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 꿈을 기록하세요"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leg elke droom vast"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capture cada sonho"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записывайте каждый сон"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记录每一个梦"
           }
         }
       }
@@ -15919,6 +16201,76 @@
         }
       }
     },
+    "Dreams fade within minutes of waking. HalfLight helps you catch them before they slip away.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تتلاشى الأحلام خلال دقائق من الاستيقاظ. يساعدك HalfLight على التقاطها قبل أن تفلت منك."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Träume verblassen schon Minuten nach dem Aufwachen. HalfLight hilft dir, sie festzuhalten, bevor sie entgleiten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los sueños se desvanecen a los pocos minutos de despertar. HalfLight te ayuda a atraparlos antes de que se escapen."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les rêves s'effacent quelques minutes après le réveil. HalfLight vous aide à les saisir avant qu'ils ne s'échappent."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I sogni svaniscono pochi minuti dopo il risveglio. HalfLight ti aiuta a catturarli prima che scompaiano."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "夢は目覚めてから数分で消えていきます。HalfLight は、夢が消える前に書きとめる手助けをします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "꿈은 깨어난 지 몇 분 만에 희미해집니다. HalfLight는 꿈이 사라지기 전에 붙잡도록 도와줍니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dromen vervagen binnen enkele minuten na het ontwaken. HalfLight helpt je ze vast te leggen voordat ze verdwijnen."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os sonhos se desvanecem poucos minutos depois de acordar. O HalfLight ajuda você a capturá-los antes que escapem."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сны блекнут уже через несколько минут после пробуждения. HalfLight помогает поймать их, пока они не ускользнули."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "梦境在醒来后几分钟内就会消散。HalfLight 帮你在它们溜走之前记录下来。"
+          }
+        }
+      }
+    },
     "Dreams logged": {
       "localizations": {
         "ar": {
@@ -18998,6 +19350,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "关注"
+          }
+        }
+      }
+    },
+    "Follow the Lucid Path — guided lessons and techniques to become aware inside your dreams.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اتبع مسار الوعي — دروس موجَّهة وتقنيات تجعلك واعيًا داخل أحلامك."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folge dem Luziden Pfad – geführte Lektionen und Techniken, um in deinen Träumen bewusst zu werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sigue el Camino lúcido: lecciones guiadas y técnicas para tomar conciencia dentro de tus sueños."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivez la Voie lucide — des leçons guidées et des techniques pour devenir conscient dans vos rêves."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segui il Percorso lucido — lezioni guidate e tecniche per diventare consapevole dentro i tuoi sogni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "明晰への道をたどりましょう。夢の中で意識を保つためのガイド付きレッスンとテクニックが待っています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자각몽 여정을 따라가 보세요. 꿈 속에서 깨어 있기 위한 안내 레슨과 기법을 만나실 수 있습니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volg het Lucide pad — begeleide lessen en technieken om bewust te worden in je dromen."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siga o Caminho lúcido — lições guiadas e técnicas para se tornar consciente dentro dos seus sonhos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пройдите Путь осознанности — уроки и техники, которые помогут осознать себя во сне."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沿着清醒之路前行——通过引导式课程与技巧，在梦中保持觉知。"
           }
         }
       }
@@ -25948,6 +26370,76 @@
         }
       }
     },
+    "Keep your streak alive, complete daily quests, and level up as your dream journal grows.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حافظ على سلسلتك، وأكمل المهام اليومية، وارتقِ بمستواك مع نمو يوميات أحلامك."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halte deine Serie am Leben, erfülle tägliche Aufgaben und steig auf, während dein Traumtagebuch wächst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantén viva tu racha, completa misiones diarias y sube de nivel mientras crece tu diario de sueños."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gardez votre série en vie, accomplissez les quêtes quotidiennes et montez en niveau à mesure que votre journal de rêves s'étoffe."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantieni viva la tua serie, completa le missioni giornaliere e sali di livello mentre il tuo diario dei sogni cresce."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連続記録を絶やさず、デイリークエストをこなして、夢日記の成長とともにレベルアップしましょう。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연속 기록을 이어 가고, 일일 퀘스트를 완료하며, 꿈 일기가 쌓일수록 레벨을 올리세요."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Houd je reeks in stand, voltooi dagelijkse quests en stijg in level terwijl je droomdagboek groeit."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantenha sua sequência viva, complete missões diárias e suba de nível conforme seu diário de sonhos cresce."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не прерывайте серию, выполняйте ежедневные задания и повышайте уровень по мере роста дневника снов."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "延续你的连续记录，完成每日任务，随着梦境日记的增长不断升级。"
+          }
+        }
+      }
+    },
     "Keeping a dream journal is one of the few habits shown in research to reliably increase both how much you recall and how often you become lucid. The simple act of writing tells your brain that dreams are worth keeping.": {
       "localizations": {
         "ar": {
@@ -26295,6 +26787,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "现在就学会平静的应对：如果你感觉到它，就想“这很正常，我是安全的”，然后放松。"
+          }
+        }
+      }
+    },
+    "Learn to lucid dream": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعلَّم الحلم الواعي"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lerne luzides Träumen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprende a soñar lúcidamente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apprenez le rêve lucide"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impara il sogno lucido"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "明晰夢を学ぶ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자각몽을 배우세요"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leer lucide dromen"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprenda o sonho lúcido"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Учитесь осознанным сновидениям"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "学习清醒梦"
           }
         }
       }
@@ -36632,6 +37194,76 @@
         }
       }
     },
+    "Post dreams to the community feed and follow other dreamers — or keep everything private. It's up to you.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انشر أحلامك في موجز المجتمع وتابع حالمين آخرين — أو احتفظ بكل شيء خاصًا. القرار لك."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Teile Träume im Community-Feed und folge anderen Träumern – oder behalte alles privat. Du entscheidest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publica sueños en el feed de la comunidad y sigue a otros soñadores, o mantén todo en privado. Tú decides."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publiez vos rêves dans le fil de la communauté et suivez d'autres rêveurs — ou gardez tout privé. C'est vous qui décidez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pubblica i sogni nel feed della community e segui altri sognatori — oppure tieni tutto privato. Decidi tu."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コミュニティフィードに夢を投稿して他の夢見る人をフォローするのも、すべて非公開のままにするのも、あなた次第です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "커뮤니티 피드에 꿈을 올리고 다른 꿈꾸는 이들을 팔로우하세요. 모두 비공개로 두어도 됩니다. 선택은 당신의 몫입니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plaats dromen in de community-feed en volg andere dromers — of houd alles privé. Jij bepaalt."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publique sonhos no feed da comunidade e siga outros sonhadores — ou mantenha tudo privado. Você decide."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Публикуйте сны в ленте сообщества и подписывайтесь на других сновидцев — или оставьте всё личным. Решать вам."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把梦发布到社区动态、关注其他梦者，或者把一切都设为私密。由你决定。"
+          }
+        }
+      }
+    },
     "Posts": {
       "extractionState": "manual",
       "localizations": {
@@ -43791,6 +44423,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "设置"
+          }
+        }
+      }
+    },
+    "Share the journey": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شارك الرحلة"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Teile die Reise"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comparte el viaje"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Partagez le voyage"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Condividi il viaggio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旅を分かち合う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여정을 나누세요"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deel de reis"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartilhe a jornada"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разделите путь"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享这段旅程"
           }
         }
       }
@@ -55726,6 +56428,76 @@
         }
       }
     },
+    "Type or speak your dream the moment you wake. Let AI name it, tag it, and reveal what it might mean.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اكتب حلمك أو انطق به لحظة استيقاظك. ودع الذكاء الاصطناعي يسمّيه ويصنّفه ويكشف معناه المحتمل."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippe oder sprich deinen Traum, sobald du aufwachst. Die KI benennt ihn, verschlagwortet ihn und zeigt, was er bedeuten könnte."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe o dicta tu sueño nada más despertar. Deja que la IA le ponga título, lo etiquete y revele lo que puede significar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Écrivez ou dictez votre rêve dès le réveil. L'IA lui donne un titre, l'étiquette et révèle ce qu'il pourrait signifier."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrivi o detta il tuo sogno appena sveglio. Lascia che l'IA gli dia un titolo, lo etichetti e riveli cosa potrebbe significare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目覚めた瞬間に、夢を入力するか話しかけましょう。AI がタイトルとタグを付け、その意味をひもときます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "잠에서 깬 순간 꿈을 입력하거나 말해 보세요. AI가 제목과 태그를 붙이고 그 의미를 풀어 줍니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Typ of spreek je droom in zodra je wakker wordt. Laat AI hem een titel geven, labelen en onthullen wat hij kan betekenen."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escreva ou fale seu sonho assim que acordar. Deixe a IA dar um título, marcar com tags e revelar o que ele pode significar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запишите или наговорите сон сразу после пробуждения. ИИ придумает название, добавит теги и подскажет, что он может значить."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "醒来的那一刻，用文字或语音记下你的梦。让 AI 为它命名、加标签，并揭示它可能的含义。"
+          }
+        }
+      }
+    },
     "Unblock": {
       "extractionState": "manual",
       "localizations": {
@@ -59515,6 +60287,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "每周任务"
+          }
+        }
+      }
+    },
+    "Welcome to HalfLight": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مرحبًا بك في HalfLight"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Willkommen bei HalfLight"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te damos la bienvenida a HalfLight"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bienvenue dans HalfLight"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti diamo il benvenuto in HalfLight"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HalfLight へようこそ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HalfLight에 오신 것을 환영합니다"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welkom bij HalfLight"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boas-vindas ao HalfLight"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добро пожаловать в HalfLight"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "欢迎使用 HalfLight"
           }
         }
       }
@@ -71593,148 +72435,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "▸ 最新梦境"
-          }
-        }
-      }
-    },
-    "Are you sure you want to block @%@?": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "هل أنت متأكد أنك تريد حظر ‏@%@؟"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Möchtest du @%@ wirklich blockieren?"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "¿Seguro que quieres bloquear a @%@?"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voulez-vous vraiment bloquer @%@ ?"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vuoi davvero bloccare @%@?"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@%@ をブロックしてもよろしいですか？"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@%@ 님을 정말 차단할까요?"
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Weet je zeker dat je @%@ wilt blokkeren?"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tem certeza de que deseja bloquear @%@?"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Точно заблокировать @%@?"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "确定要屏蔽 @%@ 吗？"
-          }
-        }
-      }
-    },
-    "Block @%@": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "حظر ‏@%@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@%@ blockieren"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bloquear a @%@"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bloquer @%@"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blocca @%@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@%@ をブロック"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@%@ 차단"
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "@%@ blokkeren"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bloquear @%@"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Заблокировать @%@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "屏蔽 @%@"
           }
         }
       }

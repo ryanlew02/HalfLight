@@ -26,8 +26,12 @@ struct OnboardingView: View {
     private struct Page: Identifiable {
         let id = UUID()
         let symbol: String
-        let title: String
-        let body: String
+        /// `LocalizedStringKey`, not `String`: `Text(String)` is the *non-localizing*
+        /// overload, so plain strings here would ship the English copy to every
+        /// language. Keeping them as keys also lets the live language switcher
+        /// re-resolve them at render time.
+        let title: LocalizedStringKey
+        let body: LocalizedStringKey
     }
 
     private let pages: [Page] = [

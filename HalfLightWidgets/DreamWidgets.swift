@@ -97,7 +97,26 @@ private extension View {
     }
 }
 
-private func daysLabel(_ count: Int) -> String { count == 1 ? "day" : "days" }
+// The two labels below sit directly under the large streak numeral, so they name
+// the unit without repeating the number. A String Catalog plural variation can't
+// express that — Xcode rejects any variation that doesn't reference the count —
+// so these use the separate singular/plural top-level strings Apple recommends
+// for exactly this case. Languages needing more than two forms therefore get the
+// general plural, which reads correctly under a numeral.
+
+/// The bare unit beneath the streak numeral ("day" / "days").
+private func daysLabel(_ count: Int) -> String {
+    count == 1
+        ? String(localized: "day", comment: "Unit under the streak numeral, singular.")
+        : String(localized: "days", comment: "Unit under the streak numeral, plural.")
+}
+
+/// The same idea as `daysLabel`, as a full phrase so translators can reorder it.
+private func daysInARowLabel(_ count: Int) -> String {
+    count == 1
+        ? String(localized: "day in a row", comment: "Phrase under the streak numeral, singular.")
+        : String(localized: "days in a row", comment: "Phrase under the streak numeral, plural.")
+}
 
 // MARK: - Streak + journal CTA
 
@@ -161,7 +180,7 @@ struct StreakWidgetView: View {
                     .foregroundStyle(Color.dreamSubtle)
             }
             Spacer()
-            Text("\(streak)")
+            Text(streak, format: .number)
                 .font(.system(size: 46, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.dreamText)
             Text(daysLabel(streak))
@@ -182,10 +201,10 @@ struct StreakWidgetView: View {
                         .foregroundStyle(Color.dreamSubtle)
                 }
                 Spacer()
-                Text("\(streak)")
+                Text(streak, format: .number)
                     .font(.system(size: 52, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.dreamText)
-                Text("\(daysLabel(streak)) in a row")
+                Text(daysInARowLabel(streak))
                     .font(.system(size: 13))
                     .foregroundStyle(Color.dreamSubtle)
                 Spacer()
@@ -208,7 +227,7 @@ struct StreakWidgetView: View {
             AccessoryWidgetBackground()
             VStack(spacing: 0) {
                 Image(systemName: "flame.fill").font(.system(size: 13))
-                Text("\(streak)").font(.system(size: 19, weight: .bold, design: .rounded))
+                Text(streak, format: .number).font(.system(size: 19, weight: .bold, design: .rounded))
                 Text(daysLabel(streak)).font(.system(size: 8))
             }
         }
@@ -279,7 +298,11 @@ struct LastDreamWidgetView: View {
                    let symbol = entry.snapshot.lastDreamMoodSymbol {
                     HStack(spacing: 5) {
                         Image(systemName: symbol)
-                        Text(mood)
+                        // `mood` is a `Dream.Mood` raw value — a stable English
+                        // name written into the shared snapshot by the app. Used
+                        // here as the catalog key so the widget shows it in the
+                        // device language rather than always in English.
+                        Text(LocalizedStringKey(mood))
                     }
                     .font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 10)
@@ -379,7 +402,7 @@ struct StatsWidgetView: View {
         Rectangle().fill(Color.dreamText.opacity(0.08)).frame(width: 1, height: 44)
     }
 
-    private func stat(_ value: String, _ label: String, _ symbol: String) -> some View {
+    private func stat(_ value: String, _ label: LocalizedStringKey, _ symbol: String) -> some View {
         VStack(spacing: 4) {
             Image(systemName: symbol)
                 .font(.system(size: 15))
@@ -394,7 +417,7 @@ struct StatsWidgetView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func compactStat(_ value: String, _ label: String, _ symbol: String) -> some View {
+    private func compactStat(_ value: String, _ label: LocalizedStringKey, _ symbol: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(.system(size: 13))

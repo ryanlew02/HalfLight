@@ -57,13 +57,16 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				SETUP.md,
 			);
 			target = A45B4FBF2FEADD790008CEEC /* HalfLightWidgetsExtension */;
 		};
 		FE57E7000000000000000001 /* Exceptions for "HalfLight" folder in "HalfLight" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				HalfLight.storekit,
 				Info.plist,
+				Moderation/README.md,
 			);
 			target = 249705332FDE065D00D64129 /* HalfLight */;
 		};
