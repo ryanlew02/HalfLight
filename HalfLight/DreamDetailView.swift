@@ -19,6 +19,7 @@ struct DreamDetailView: View {
     @Environment(DreamStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(SubscriptionManager.self) private var subscriptions
+    @Environment(AuthService.self) private var auth
     @State private var isEditing = false
     @State private var analyzer = DreamAnalyzer()
     /// The author profile to push when the header is tapped.
@@ -28,6 +29,9 @@ struct DreamDetailView: View {
     /// Set when the paywall was opened by a tap on Analyze, so subscribing runs
     /// the analysis right away instead of dropping the tap.
     @State private var analyzeAfterPaywall = false
+    /// Presented when a signed-out dreamer taps Analyze — the AI is gated on the
+    /// account server-side, so there's nothing to run without one.
+    @State private var showAuth = false
 
     var body: some View {
         ScrollView {
@@ -83,6 +87,7 @@ struct DreamDetailView: View {
             }
         }
         .sheet(isPresented: $showPaywall, onDismiss: resumeAnalyzeAfterPaywall) { PaywallView() }
+        .sheet(isPresented: $showAuth, onDismiss: resumeAnalyzeAfterAuth) { AuthView() }
         .task {
             // A brand-new subscription can beat its own record to the server; let
             // the analyzer push it across and retry rather than telling a paying
@@ -243,7 +248,25 @@ struct DreamDetailView: View {
         analyze()
     }
 
+    /// Once the sign-in sheet closes, pick the tap back up: `analyze()` re-runs
+    /// the gates, so an entitled dreamer analyses and everyone else lands on the
+    /// paywall. Backing out of sign-in drops it.
+    private func resumeAnalyzeAfterAuth() {
+        guard analyzeAfterPaywall else { return }
+        // Clear it first: `analyze()` sets it again if it needs the paywall.
+        analyzeAfterPaywall = false
+        guard auth.isSignedIn else { return }
+        analyze()
+    }
+
     private func analyze() {
+        // The analysis runs server-side against the dreamer's account, so a
+        // signed-out tap needs sign-in before the paywall means anything.
+        guard auth.isSignedIn else {
+            analyzeAfterPaywall = true
+            showAuth = true
+            return
+        }
         // AI analysis is HalfLight Pro: send non-subscribers to the paywall, and
         // pick this tap back up the moment they're subscribed.
         guard subscriptions.isSubscribed else {

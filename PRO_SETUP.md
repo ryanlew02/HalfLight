@@ -9,6 +9,12 @@ auto-renewable subscription:
 The app gates the UI (StoreKit 2); the Supabase edge functions verify a real entitlement
 before calling Claude, so the Anthropic bill is protected even if someone bypasses the app.
 
+**A HalfLight account is required to subscribe.** Everything Pro buys runs server-side,
+keyed to the dreamer's Supabase user, so a guest purchase would take the money and unlock
+nothing. The paywall's button reads *Sign In to Subscribe* when signed out, and
+`SubscriptionManager.purchase` refuses outright — no path can charge a guest. Tapping an AI
+feature while signed out opens sign-in, not the paywall.
+
 ---
 
 ## 1. Test locally first (no App Store Connect needed)
@@ -58,13 +64,23 @@ supabase secrets set APP_STORE_ENVIRONMENT=Production   # use Sandbox while test
 # Apply the new entitlements table + RPC
 supabase db push    # applies supabase/migrations/20260623150000_subscriptions.sql
 
-# Deploy the functions (the user-JWT ones self-verify, hence --no-verify-jwt)
+# Apple posts to these with no Supabase JWT, so the gateway check must be off;
+# they verify Apple's signed payloads themselves instead.
 supabase functions deploy sync-subscription --no-verify-jwt
 supabase functions deploy app-store-notifications --no-verify-jwt
-supabase functions deploy analyze-dream --no-verify-jwt   # redeploy: now requires a subscription
-supabase functions deploy suggest-tags  --no-verify-jwt
-supabase functions deploy suggest-title --no-verify-jwt
+
+# The AI functions are called with a real user token, so leave the gateway's JWT
+# check ON (no flag) — `ai-guard.ts` re-verifies and checks the subscription on
+# top of it. Passing --no-verify-jwt here would drop the outer layer.
+supabase functions deploy analyze-dream
+supabase functions deploy suggest-tags
+supabase functions deploy suggest-title
 ```
+
+> Redeploy all three AI functions whenever `_shared/ai-guard.ts` changes — it's bundled
+> into each of them, and it's the only thing standing between a non-subscriber and the
+> Anthropic bill. `supabase functions list` shows each one's deploy time; if any predates
+> your last change to `ai-guard.ts`, it's running a stale copy of the gate.
 
 `ANTHROPIC_API_KEY`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` are already set / injected.
 
@@ -102,6 +118,40 @@ server. After deploying, set the notification URL to the `app-store-notification
    ```
 6. In Sandbox, subscriptions renew on an accelerated clock — watch the `subscriptions` row
    update from the webhook, and let it expire to confirm AI re-locks.
+
+---
+
+## 6. Stress-test matrix
+
+Run these before shipping. Steps 1–8 work against the local `.storekit` config (Xcode's
+**Debug → StoreKit → Manage Transactions** drives most of them); 9–12 need Sandbox.
+
+| # | Scenario | Expected |
+|---|---|---|
+| 1 | Tap an AI feature signed out | Sign-in sheet (not the paywall); after signing in the tap resumes — analysing if entitled, paywall if not |
+| 2 | Open the paywall signed out (Settings → Pro card) | Button reads **Sign In to Subscribe**; no purchase is possible |
+| 3 | Buy yearly as a first-time subscriber | Trial badge shown; AI unlocks; a `subscriptions` row appears |
+| 4 | Open the paywall again after cancelling/expiring | **No** trial copy anywhere — button says *Subscribe*, caption says "billed yearly" |
+| 5 | Airplane mode, then open the paywall | No prices invented; "couldn't be loaded" card + **Try Again** button |
+| 6 | Kill the Supabase function, then buy | Purchase succeeds, AI's first call 402s, `ensureServerEntitlement` retries and it works |
+| 7 | Restore with no subscription | Alert: none found |
+| 8 | Restore signed out, with a subscription | Alert explains the account requirement — *not* "contact support" |
+| 9 | Background the app, cancel in Settings.app, return | Entitlement recomputed on foreground; AI re-locks at period end |
+| 10 | Ask-to-Buy (`_askToBuyEnabled`) | "Pending approval"; approving later unlocks via the updates listener |
+| 11 | Refund via App Store Connect | Webhook writes `refunded`; AI 402s |
+| 12 | Replay an older notification after a newer one | Ignored — `upsertEntitlement` refuses to move an entitlement backwards |
+| 13 | Delete the account while subscribed | Confirmation warns Apple keeps billing, and offers **Manage Subscription** |
+| 14 | Switch the app language (Settings → Language) | The whole paywall translates, including plan cards and purchase errors |
+
+### Known, accepted
+
+- **Sandbox entitlements are honoured in production.** `has_active_subscription` doesn't
+  filter on `environment`, which is deliberate: App Review buys in Sandbox, and TestFlight
+  purchases are always Sandbox. The `environment` column is recorded for auditing. Only
+  Apple IDs you've added as sandbox testers (plus TestFlight builds) can produce them.
+- **One Apple subscription follows the account that last synced it.** Signing a second
+  HalfLight account in on the same Apple ID moves the entitlement to it (see
+  `upsertEntitlement`); it's never active on two accounts at once.
 
 ---
 

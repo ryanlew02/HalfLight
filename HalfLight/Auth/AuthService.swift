@@ -1467,18 +1467,15 @@ final class SupabaseAuthBackend: AuthBackend {
 
     func isUsernameAvailable(_ username: String) async throws -> Bool {
         guard SupabaseConfig.isConfigured else { throw notConfigured }
-        // Decode a minimal row, not the full `ProfileRow`: the query only selects
-        // `username`, so decoding into `ProfileRow` (which also needs id/first/last)
-        // would throw whenever a row exists — i.e. exactly when the name is taken.
-        struct UsernameRow: Decodable { let username: String }
-        let rows: [UsernameRow] = try await client
-            .from("profiles")
-            .select("username")
-            .eq("username", value: username)
-            .limit(1)
+        // Goes through `username_available` rather than reading `profiles`: this
+        // runs mid-signup, before the account exists, and the table is no longer
+        // readable while signed out. The function answers with one boolean and
+        // matches case-insensitively, like the uniqueness index.
+        struct Params: Encodable { let p_username: String }
+        return try await client
+            .rpc("username_available", params: Params(p_username: username))
             .execute()
             .value
-        return rows.isEmpty
     }
 
     /// Map a failed `profiles` insert to a meaningful error. Only a genuine

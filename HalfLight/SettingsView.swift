@@ -142,13 +142,19 @@ struct SettingsView: View {
         }
     }
 
-    /// A friendly result message after a Restore attempt.
+    /// A friendly result message after a Restore attempt — one per way it can end,
+    /// so a dreamer who simply isn't signed in isn't told to email support.
     private var restoreResultMessage: LocalizedStringKey {
-        if subscriptions.isSubscribed && subscriptions.lastSyncSucceeded {
+        switch subscriptions.lastRestoreOutcome {
+        case .restored:
             return "Your HalfLight Pro subscription has been restored."
-        } else if !subscriptions.isSubscribed {
+        case .notFound:
             return "We couldn't find an active subscription for your Apple ID. If you believe this is a mistake, email support@thelanternhours.com."
-        } else {
+        case .needsSignIn:
+            return "Your subscription is active on this Apple ID. Sign in to your HalfLight account to use it — the AI features are tied to your account."
+        case .syncFailed:
+            return "Your subscription is active, but we couldn't reach our servers to finish setting it up. Check your connection and try again."
+        case .none:
             return "Something went wrong restoring your purchase. Please email support@thelanternhours.com and we'll get it sorted."
         }
     }
@@ -460,6 +466,7 @@ struct LanguageSettingsView: View {
 
 struct AccountSettingsView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(SubscriptionManager.self) private var subscriptions
     @State private var showAuth = false
     @State private var showDeleteConfirm = false
 
@@ -584,14 +591,31 @@ struct AccountSettingsView: View {
                     SoundManager.shared.play(ok ? .tap : .wrong)
                 }
             }
+            // Deleting the account can't cancel an App Store subscription — only
+            // Apple can. Offer the way there so nobody is left paying for an
+            // account that no longer exists.
+            if subscriptions.isSubscribed {
+                Button("Manage Subscription") {
+                    Task { await subscriptions.showManageSubscriptions() }
+                }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently deletes your account and all dreams backed up to it. This can't be undone.")
+            Text(deleteAccountMessage)
         }
         .onAppear { auth.errorMessage = nil }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+    }
+
+    /// Deleting the account removes the dreams, but an auto-renewable
+    /// subscription lives with Apple and keeps billing until it's cancelled
+    /// there — say so plainly to anyone who has one.
+    private var deleteAccountMessage: LocalizedStringKey {
+        subscriptions.isSubscribed
+            ? "This permanently deletes your account and all dreams backed up to it. This can't be undone. Your HalfLight Pro subscription is billed by Apple and won't be cancelled — cancel it in your App Store subscription settings."
+            : "This permanently deletes your account and all dreams backed up to it. This can't be undone."
     }
 }
 

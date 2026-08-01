@@ -196,12 +196,44 @@ export function adminClient() {
   );
 }
 
+/// Statuses that must never be overwritten by a replayed older payload — once a
+/// subscription is refunded or revoked, access stays closed.
+const TERMINAL_STATUSES = new Set(["refunded", "revoked"]);
+
 /// Upsert the entitlement for a known user. Returns the Supabase error, if any.
 export async function upsertEntitlement(
   admin: ReturnType<typeof adminClient>,
   userId: string,
   e: Entitlement,
 ) {
+  // Apple retries notifications and does not guarantee ordering, and the app
+  // posts its own transaction alongside them — so an older payload can land
+  // after a newer one. Applying it blindly would roll an entitlement backwards
+  // (shortening a renewed period, or re-opening a refunded subscription), so
+  // drop anything that would not move this subscription forward.
+  if (e.originalTransactionId && !TERMINAL_STATUSES.has(e.status)) {
+    const { data: current } = await admin
+      .from("subscriptions")
+      .select("expires_at, status")
+      .eq("user_id", userId)
+      .eq("original_transaction_id", e.originalTransactionId)
+      .maybeSingle();
+
+    const storedMs = current?.expires_at ? Date.parse(current.expires_at) : NaN;
+    if (Number.isFinite(storedMs)) {
+      // A shorter period than the one already recorded is a stale payload.
+      if (e.expiresMs !== null && e.expiresMs < storedMs) return null;
+      // Don't let a replay of the pre-refund transaction reopen a closed
+      // subscription; only a genuinely later period may revive it.
+      if (
+        TERMINAL_STATUSES.has(current!.status) &&
+        (e.expiresMs === null || e.expiresMs <= storedMs)
+      ) {
+        return null;
+      }
+    }
+  }
+
   // One Apple subscription (keyed by originalTransactionId) can end up recorded
   // under a different app account than the one now signed in — e.g. the same
   // Apple ID was used across multiple HalfLight accounts. The unique index on

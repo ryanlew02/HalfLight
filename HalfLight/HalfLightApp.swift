@@ -70,6 +70,7 @@ struct HalfLightApp: App {
 /// Builds the `DreamStore` from the SwiftUI-owned model context and injects it.
 private struct RootView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appTheme") private var theme: AppTheme = .system
     /// One-time first-launch onboarding gate. Set once the dreamer finishes the
     /// intro — whether they sign up or choose to continue as a guest.
@@ -138,6 +139,13 @@ private struct RootView: View {
             // Restoring may flip auth to signed-in, which triggers a reconcile
             // via onChange below.
             await auth.restore()
+        }
+        // A subscription can be cancelled, expire or be started in Settings.app
+        // while HalfLight is in the background, so recompute the entitlement on
+        // the way back in rather than trusting what we last saw.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await subscriptions.refreshOnForeground() }
         }
         .onChange(of: auth.status) { previous, status in
             if status == .signedIn {

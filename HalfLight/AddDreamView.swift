@@ -246,7 +246,7 @@ struct AddDreamView: View {
             }
             .onDisappear { transcriber.stop() }
             .sheet(isPresented: $showPaywall, onDismiss: resumePendingProAction) { PaywallView() }
-            .sheet(isPresented: $showAuth) { AuthView() }
+            .sheet(isPresented: $showAuth, onDismiss: resumeAfterAuth) { AuthView() }
             .alert(
                 "Can't share this dream",
                 isPresented: Binding(
@@ -361,6 +361,15 @@ struct AddDreamView: View {
     /// instead of spending on the analysis, holding on to what they reached for so
     /// subscribing picks it straight back up.
     private func withPro(_ action: @escaping () -> Void) {
+        // The AI runs server-side against the dreamer's account, so a signed-out
+        // tap needs sign-in first — including from someone who already
+        // subscribed on this Apple ID, who'd otherwise hit a bare error.
+        guard auth.isSignedIn else {
+            SoundManager.shared.play(.tap)
+            pendingProAction = action
+            showAuth = true
+            return
+        }
         guard subscriptions.isSubscribed else {
             SoundManager.shared.play(.tap)
             pendingProAction = action
@@ -368,6 +377,22 @@ struct AddDreamView: View {
             return
         }
         action()
+    }
+
+    /// After the sign-in sheet closes: run the held AI action if they're now
+    /// entitled, send them to the paywall if they still need Pro, and drop it if
+    /// they backed out. Sign-in sheets opened for other reasons hold no action.
+    private func resumeAfterAuth() {
+        guard pendingProAction != nil else { return }
+        guard auth.isSignedIn else {
+            pendingProAction = nil
+            return
+        }
+        if subscriptions.isSubscribed {
+            resumePendingProAction()
+        } else {
+            showPaywall = true
+        }
     }
 
     /// Once the paywall closes, run whatever sent them there — but only if they
