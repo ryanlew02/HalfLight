@@ -11,6 +11,15 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 /// Daily per-user AI request allowance.
 const DAILY_LIMIT = 12;
 
+/// Longest dream text forwarded to Claude. The daily limit bounds how *many*
+/// requests a subscriber can make, but not how large each one is — without a
+/// cap, twelve context-window-sized entries a day cost many times what the
+/// subscription brings in. Far longer than any dream anyone actually writes.
+export const MAX_ENTRY_CHARS = 8000;
+
+/// Longest title / mood forwarded to Claude. Both are short fields in the app.
+export const MAX_FIELD_CHARS = 200;
+
 export interface Guarded {
   ok: boolean;
   userId?: string;

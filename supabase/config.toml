@@ -1,0 +1,64 @@
+# Supabase CLI config for HalfLight.
+#
+# This file exists mainly for the [functions.*] stanzas below. `supabase
+# functions deploy` defaults verify_jwt to TRUE, and the --no-verify-jwt flag is
+# not sticky — it applies only to the one command you type it on. So a redeploy
+# that forgets the flag silently turns the API gateway's JWT check back on, and
+# every caller that doesn't send a Supabase JWT starts getting 401s before the
+# function code ever runs. That is how push notifications broke on 2026-08-02:
+# push-notify was redeployed without the flag, and the pg_cron job (which sends
+# only x-cron-secret, no Authorization header) was rejected at the gateway.
+#
+# Declaring verify_jwt here makes it a property of the project rather than of
+# whoever typed the deploy command. Every function is listed explicitly — including
+# the ones that DO want the check — so the intent is visible and nothing depends
+# on remembering a default.
+
+project_id = "kbklwrvhocyibesvsqqa"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gateway JWT check OFF — these are called by callers that have no Supabase JWT.
+# Each one authenticates itself instead; the check below each stanza says how.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# pg_cron, every 15 min. Auth: x-cron-secret header vs CRON_SECRET.
+[functions.push-notify]
+verify_jwt = false
+
+# pg_cron, daily 09:00. Auth: x-cron-secret header vs MODERATION_CRON_SECRET.
+[functions.moderate-reports]
+verify_jwt = false
+
+# Apple's App Store Server Notifications V2. Auth: the payload's own signed JWS
+# chain, verified against a pinned Apple root in _shared/apple-verify.ts.
+[functions.app-store-notifications]
+verify_jwt = false
+
+# The app posts its signed transaction here after a purchase. Auth: same Apple
+# JWS verification as above.
+[functions.sync-subscription]
+verify_jwt = false
+
+# Auth: verifies the caller's JWT itself, in-function.
+[functions.delete-account]
+verify_jwt = false
+
+# Auth: verifies the caller's JWT itself, in-function.
+[functions.apple-link]
+verify_jwt = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gateway JWT check ON — called by the app with a real user token. _shared/
+# ai-guard.ts re-verifies the user and checks the Pro entitlement on top, but the
+# gateway check is the outer layer and must stay: it is what stands between a
+# leaked publishable key and the Anthropic bill.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[functions.analyze-dream]
+verify_jwt = true
+
+[functions.suggest-tags]
+verify_jwt = true
+
+[functions.suggest-title]
+verify_jwt = true

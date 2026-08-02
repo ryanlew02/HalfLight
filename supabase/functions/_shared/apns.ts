@@ -9,18 +9,28 @@
 //   APNS_TEAM_ID     — your 10-char Apple Team ID
 //   APNS_PRIVATE_KEY — the .p8 contents (full PEM, including BEGIN/END lines)
 //   APNS_BUNDLE_ID   — the app bundle id, used as apns-topic (e.g. com.you.HalfLight)
-//   APNS_ENV         — "production" or "sandbox" (default: sandbox)
+//   APNS_ENV         — "production" or "sandbox" (required, no default)
 
 const KEY_ID = Deno.env.get("APNS_KEY_ID") ?? "";
 const TEAM_ID = Deno.env.get("APNS_TEAM_ID") ?? "";
 const PRIVATE_KEY = Deno.env.get("APNS_PRIVATE_KEY") ?? "";
 const BUNDLE_ID = Deno.env.get("APNS_BUNDLE_ID") ?? "";
-const HOST = (Deno.env.get("APNS_ENV") ?? "sandbox") === "production"
+
+// Deliberately no default. Getting this wrong is destructive, not merely broken:
+// Apple answers a push sent to the wrong environment with BadDeviceToken, which
+// push-notify reads as "this device is gone" and deletes the row for — so an
+// unset or misspelt APNS_ENV would quietly wipe every registered token. Sending
+// nothing is the safe direction, so an unrecognised value leaves HOST empty and
+// reports as unconfigured; the caller then skips the run and touches no tokens.
+const APNS_ENV = Deno.env.get("APNS_ENV") ?? "";
+const HOST = APNS_ENV === "production"
   ? "https://api.push.apple.com"
-  : "https://api.sandbox.push.apple.com";
+  : APNS_ENV === "sandbox"
+  ? "https://api.sandbox.push.apple.com"
+  : "";
 
 export function apnsConfigured(): boolean {
-  return !!(KEY_ID && TEAM_ID && PRIVATE_KEY && BUNDLE_ID);
+  return !!(KEY_ID && TEAM_ID && PRIVATE_KEY && BUNDLE_ID && HOST);
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -82,6 +92,11 @@ export interface ApnsResult {
 
 /** Send one alert push to a single device token. */
 export async function sendPush(deviceToken: string, payload: ApnsPayload): Promise<ApnsResult> {
+  // Belt and braces for a caller that forgot apnsConfigured(): fail here rather
+  // than send to a guessed host and have Apple's rejection delete the token.
+  if (!HOST) {
+    throw new Error('APNS_ENV must be set to "production" or "sandbox"');
+  }
   const jwt = await providerToken();
   const body = JSON.stringify({
     aps: {

@@ -14,7 +14,7 @@
 //  `guardAIRequest`, so it isn't actually open.)
 
 import Anthropic from "npm:@anthropic-ai/sdk";
-import { guardAIRequest } from "../_shared/ai-guard.ts";
+import { guardAIRequest, MAX_ENTRY_CHARS, MAX_FIELD_CHARS } from "../_shared/ai-guard.ts";
 
 // The model. claude-haiku-4-5 is the cheapest current Claude and is plenty for
 // this task. For richer, more nuanced interpretations, switch to
@@ -61,9 +61,11 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const title = (body.title ?? "").trim();
-  const entry = (body.entry ?? "").trim();
-  const mood = (body.mood ?? "").trim();
+  // Truncate rather than reject: the credit is already spent by the guard above,
+  // and a clipped dream still analyses fine.
+  const title = (body.title ?? "").trim().slice(0, MAX_FIELD_CHARS);
+  const entry = (body.entry ?? "").trim().slice(0, MAX_ENTRY_CHARS);
+  const mood = (body.mood ?? "").trim().slice(0, MAX_FIELD_CHARS);
 
   if (!entry) {
     return json({ error: "Missing dream text" }, 400);
